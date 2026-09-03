@@ -7,6 +7,12 @@ on:
     - cron: "5,15 18 * * 1-5"
       timezone: "Europe/Istanbul"
   workflow_dispatch:
+    inputs:
+      symbol:
+        description: "Hisse kodu (manuel çalıştırma)"
+        required: true
+        default: "ZGYO"
+        type: string
 
 permissions:
   contents: read
@@ -32,7 +38,7 @@ jobs:
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
           TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          SYMBOL: "ZGYO"
+          SYMBOL: ${{ github.event_name == 'workflow_dispatch' && inputs.symbol || 'ZGYO' }}
           COMMANDS: "akd,derinlik"
           COMMAND_DELAY_SECONDS: "10"
         run: python -m src.main
