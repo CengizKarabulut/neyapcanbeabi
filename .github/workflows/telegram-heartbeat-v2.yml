@@ -1,0 +1,86 @@
+name: Telegram Recovery Heartbeat v2
+
+on:
+  schedule:
+    # Her 5 dakikada bir, hafta ici 10:00-23:59 TRT (UTC 07:00-20:59).
+    - cron: "*/5 7-20 * * 1-5"
+  push:
+    paths:
+      - ".github/heartbeat-v2-bootstrap"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: telegram-recovery-v2
+  cancel-in-progress: true
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Recover missing Telegram schedules
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          dow="$(TZ=Europe/Istanbul date +%u)"
+          hour="$(TZ=Europe/Istanbul date +%H)"
+          minute="$(TZ=Europe/Istanbul date +%M)"
+          now_min=$((10#${hour} * 60 + 10#${minute}))
+
+          if [ "${dow}" -gt 5 ]; then
+            echo "Hafta sonu; işlem yok."
+            exit 0
+          fi
+
+          recent_count() {
+            local workflow="$1"
+            local minutes="$2"
+            local cutoff
+            cutoff="$(date -u -d "${minutes} minutes ago" +%Y-%m-%dT%H:%M:%SZ)"
+            gh api "repos/${REPOSITORY}/actions/workflows/${workflow}/runs?per_page=30" |
+              jq --arg cutoff "${cutoff}" '[.workflow_runs[] | select(.created_at >= $cutoff) | select(.status == "queued" or .status == "in_progress" or .conclusion == "success")] | length'
+          }
+
+          if (( now_min >= 605 && now_min <= 1095 )); then
+            zgyo_recent="$(recent_count zgyo-5min-v2.yml 8)"
+            if [ "${zgyo_recent}" -eq 0 ]; then
+              echo "ZGYO son 8 dakikada yok; v2 kurtarma başlatılıyor."
+              gh workflow run zgyo-5min-v2.yml --repo "${REPOSITORY}" --ref main
+            else
+              echo "ZGYO v2 yakın zamanda çalışmış."
+            fi
+          fi
+
+          if (( now_min >= 605 && now_min <= 1085 )); then
+            asels_recent="$(recent_count asels-30min-v2.yml 34)"
+            if [ "${asels_recent}" -eq 0 ]; then
+              echo "ASELS son 34 dakikada yok; v2 kurtarma başlatılıyor."
+              gh workflow run asels-30min-v2.yml --repo "${REPOSITORY}" --ref main
+            else
+              echo "ASELS v2 yakın zamanda çalışmış."
+            fi
+          fi
+
+          if (( now_min >= 1115 && now_min <= 1130 )); then
+            asels_takas_recent="$(recent_count asels-eod-takas.yml 25)"
+            if [ "${asels_takas_recent}" -eq 0 ]; then
+              echo "ASELS takas yok; kurtarma çalıştırılıyor."
+              gh workflow run asels-eod-takas.yml --repo "${REPOSITORY}" --ref main
+            fi
+          fi
+
+          if (( now_min >= 1095 && now_min <= 1395 )); then
+            zgyo_takas_recent="$(recent_count zgyo-evening-takas.yml 34)"
+            if [ "${zgyo_takas_recent}" -eq 0 ]; then
+              echo "ZGYO akşam takas yok; kurtarma çalıştırılıyor."
+              gh workflow run zgyo-evening-takas.yml --repo "${REPOSITORY}" --ref main
+            fi
+          fi
