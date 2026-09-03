@@ -8,6 +8,9 @@ on:
     # Ikinci blok 14:05'te baslar ve 18:15:59'a kadar her dakika gonderir.
     - cron: "5 14 * * 1-5"
       timezone: "Europe/Istanbul"
+  push:
+    paths:
+      - ".github/zgyo-bootstrap"
   workflow_dispatch:
     inputs:
       symbol:
@@ -49,6 +52,6 @@ jobs:
           COMMANDS: "akd,derinlik"
           COMMAND_DELAY_SECONDS: "10"
           DEDUPE_SECONDS: "45"
-          WINDOW_END: ${{ github.event_name == 'schedule' && github.event.schedule == '5 10 * * 1-5' && '14:04:59' || github.event_name == 'schedule' && '18:15:59' || '' }}
+          WINDOW_END: ${{ github.event_name == 'schedule' && github.event.schedule == '5 10 * * 1-5' && '14:04:59' || github.event_name == 'schedule' && '18:15:59' || github.event_name == 'push' && '18:15:59' || '' }}
           MAX_CYCLES: ${{ github.event_name == 'workflow_dispatch' && inputs.max_cycles || '0' }}
         run: python scripts/minute_commands.py
