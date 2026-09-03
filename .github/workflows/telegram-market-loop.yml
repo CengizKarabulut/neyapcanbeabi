@@ -1,0 +1,139 @@
+name: Telegram Market Loop
+run-name: "Telegram Market Loop · ${{ github.event_name }}"
+
+on:
+  push:
+    paths:
+      - ".github/telegram-loop-bootstrap"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: telegram-market-loop
+  cancel-in-progress: true
+
+jobs:
+  loop:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - run: python -m pip install -r requirements.txt
+
+      - name: Run market loop without GitHub schedule
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+          ZGYO_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          started_epoch="$(date +%s)"
+          handoff_after=$((300 * 60))
+          first_iteration=1
+
+          send_zgyo_intraday() {
+            echo "[$(TZ=Europe/Istanbul date '+%F %T')] ZGYO intraday"
+            TELEGRAM_CHAT_ID="${ZGYO_CHAT_ID}" \
+            SYMBOL="ZGYO" \
+            COMMANDS="akd,derinlik" \
+            COMMAND_DELAY_SECONDS="10" \
+            DEDUPE_WINDOW_MINUTES="4" \
+            python -m src.main
+          }
+
+          send_asels_intraday() {
+            echo "[$(TZ=Europe/Istanbul date '+%F %T')] ASELS intraday"
+            TELEGRAM_CHAT_ID="@aselsanhissee" \
+            SYMBOL="ASELS" \
+            COMMANDS="akd,derinlik,kurum" \
+            COMMAND_DELAY_SECONDS="10" \
+            DEDUPE_WINDOW_MINUTES="25" \
+            python -m src.main
+          }
+
+          send_asels_takas() {
+            echo "[$(TZ=Europe/Istanbul date '+%F %T')] ASELS takas"
+            TELEGRAM_CHAT_ID="@aselsanhissee" \
+            SYMBOL="ASELS" \
+            COMMANDS="takas" \
+            COMMAND_DELAY_SECONDS="10" \
+            DEDUPE_WINDOW_MINUTES="25" \
+            python -m src.main
+          }
+
+          send_zgyo_takas() {
+            echo "[$(TZ=Europe/Istanbul date '+%F %T')] ZGYO takas"
+            TELEGRAM_CHAT_ID="${ZGYO_CHAT_ID}" \
+            SYMBOL="ZGYO" \
+            COMMANDS="takas" \
+            COMMAND_DELAY_SECONDS="10" \
+            DEDUPE_WINDOW_MINUTES="20" \
+            python -m src.main
+          }
+
+          while true; do
+            dow="$(TZ=Europe/Istanbul date +%u)"
+            hour="$(TZ=Europe/Istanbul date +%H)"
+            minute="$(TZ=Europe/Istanbul date +%M)"
+            second="$(TZ=Europe/Istanbul date +%S)"
+            now_min=$((10#${hour} * 60 + 10#${minute}))
+
+            # Bootstrap anında aktif seanstaysak ZGYO'yu bir kez kurtar; sonraki turlar 5 dk sinirina hizalanir.
+            if [ "${first_iteration}" -eq 1 ] && [ "${dow}" -le 5 ] && (( now_min >= 605 && now_min <= 1095 )); then
+              send_zgyo_intraday || true
+            fi
+            first_iteration=0
+
+            # Sadece 5 dakikalik saat sinirlarinda planli islemleri yap.
+            if [ "${dow}" -le 5 ] && (( 10#${minute} % 5 == 0 )); then
+              if (( now_min >= 605 && now_min <= 1095 )); then
+                send_zgyo_intraday || true
+              fi
+
+              # ASELS 10:05-17:35 arasi :05/:35 ve son tur 18:05.
+              if { (( 10#${hour} >= 10 && 10#${hour} <= 17 )) && { [ "${minute}" = "05" ] || [ "${minute}" = "35" ]; }; } \
+                 || { [ "${hour}" = "18" ] && [ "${minute}" = "05" ]; }; then
+                send_asels_intraday || true
+              fi
+
+              # ASELS kapanis takasi 18:30.
+              if [ "${hour}" = "18" ] && [ "${minute}" = "30" ]; then
+                send_asels_takas || true
+              fi
+
+              # ZGYO aksam takas: 18:15/45 ... 22:15/45 ve 23:15.
+              if { (( 10#${hour} >= 18 && 10#${hour} <= 22 )) && { [ "${minute}" = "15" ] || [ "${minute}" = "45" ]; }; } \
+                 || { [ "${hour}" = "23" ] && [ "${minute}" = "15" ]; }; then
+                send_zgyo_takas || true
+              fi
+            fi
+
+            elapsed=$(( $(date +%s) - started_epoch ))
+            if (( elapsed >= handoff_after )); then
+              echo "5 saatlik blok tamamlandi; yeni loop run'i dispatch ediliyor."
+              gh workflow run telegram-market-loop.yml --repo "${GITHUB_REPOSITORY}" --ref main
+              exit 0
+            fi
+
+            # Sonraki 5 dakikalik duz sinira hizalan.
+            minute="$(TZ=Europe/Istanbul date +%M)"
+            second="$(TZ=Europe/Istanbul date +%S)"
+            into_slot=$(( (10#${minute} % 5) * 60 + 10#${second} ))
+            sleep_for=$((300 - into_slot))
+            if (( sleep_for < 5 )); then
+              sleep_for=5
+            fi
+            echo "Sonraki kontrol ${sleep_for} saniye sonra."
+            sleep "${sleep_for}"
+          done
