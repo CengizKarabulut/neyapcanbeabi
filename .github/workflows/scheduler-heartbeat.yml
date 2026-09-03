@@ -41,12 +41,6 @@ jobs:
             exit 0
           fi
 
-          active_count() {
-            local workflow="$1"
-            gh api "repos/${REPOSITORY}/actions/workflows/${workflow}/runs?per_page=20" |
-              jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length'
-          }
-
           recent_count() {
             local workflow="$1"
             local minutes="$2"
@@ -56,30 +50,25 @@ jobs:
               jq --arg cutoff "${cutoff}" '[.workflow_runs[] | select(.created_at >= $cutoff) | select(.status == "queued" or .status == "in_progress" or .conclusion == "success")] | length'
           }
 
+          # ZGYO: 10:05-18:15 arası 5 dakikalık ritim. Son 8 dakikada koşu yoksa kurtar.
           if (( now_min >= 605 && now_min <= 1095 )); then
-            zgyo_active="$(active_count telegram-commands.yml)"
-            if [ "${zgyo_active}" -eq 0 ]; then
-              if (( now_min < 845 )); then
-                end_min=844
-              else
-                end_min=1095
-              fi
-              cycles=$((end_min - now_min + 1))
-              if (( cycles < 1 )); then cycles=1; fi
-              echo "ZGYO dakikalık akış aktif değil; ${cycles} turla kurtarma başlatılıyor."
-              gh workflow run telegram-commands.yml --repo "${REPOSITORY}" --ref main -f symbol=ZGYO -f max_cycles="${cycles}"
+            zgyo_recent="$(recent_count telegram-commands.yml 8)"
+            if [ "${zgyo_recent}" -eq 0 ]; then
+              echo "Son 8 dakikada ZGYO turu yok; kurtarma turu başlatılıyor."
+              gh workflow run telegram-commands.yml --repo "${REPOSITORY}" --ref main -f symbol=ZGYO
             else
-              echo "ZGYO dakikalık akış aktif."
+              echo "ZGYO 5 dakikalık akışı yakın zamanda çalışmış."
             fi
           fi
 
-          if (( now_min >= 605 && now_min <= 1095 )); then
-            asels_recent="$(recent_count asels-intraday.yml 14)"
+          # ASELS: 10:05-18:05 arası 30 dakikalık ritim. Son 34 dakikada koşu yoksa kurtar.
+          if (( now_min >= 605 && now_min <= 1085 )); then
+            asels_recent="$(recent_count asels-intraday.yml 34)"
             if [ "${asels_recent}" -eq 0 ]; then
-              echo "Son 14 dakikada ASELS turu yok; kurtarma turu başlatılıyor."
+              echo "Son 34 dakikada ASELS turu yok; kurtarma turu başlatılıyor."
               gh workflow run asels-intraday.yml --repo "${REPOSITORY}" --ref main
             else
-              echo "ASELS intraday yakın zamanda çalışmış."
+              echo "ASELS 30 dakikalık akışı yakın zamanda çalışmış."
             fi
           fi
 
