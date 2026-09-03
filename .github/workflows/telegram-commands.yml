@@ -48,6 +48,7 @@ jobs:
           SYMBOL: ${{ github.event_name == 'workflow_dispatch' && inputs.symbol || 'ZGYO' }}
           COMMANDS: "akd,derinlik"
           COMMAND_DELAY_SECONDS: "10"
+          DEDUPE_SECONDS: "45"
           WINDOW_END: ${{ github.event_name == 'schedule' && github.event.schedule == '5 10 * * 1-5' && '14:04:59' || github.event_name == 'schedule' && '18:15:59' || '' }}
           MAX_CYCLES: ${{ github.event_name == 'workflow_dispatch' && inputs.max_cycles || '0' }}
         run: python scripts/minute_commands.py
