@@ -2,7 +2,8 @@ name: Telegram Recovery Heartbeat v2
 
 on:
   schedule:
-    # Her 5 dakikada bir, hafta ici 10:00-23:59 TRT (UTC 07:00-20:59).
+    # Hafta ici 10:00-23:59 TRT. Cron gecikse bile sadece ana loop'u kontrol eder;
+    # tek tek Telegram komutlarini dogrudan gondermez.
     - cron: "*/5 7-20 * * 1-5"
   push:
     paths:
@@ -22,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - name: Recover missing Telegram schedules
+      - name: Recover live Telegram market loop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
@@ -31,56 +32,23 @@ jobs:
           set -euo pipefail
 
           dow="$(TZ=Europe/Istanbul date +%u)"
-          hour="$(TZ=Europe/Istanbul date +%H)"
-          minute="$(TZ=Europe/Istanbul date +%M)"
-          now_min=$((10#${hour} * 60 + 10#${minute}))
+          tr_now="$(TZ=Europe/Istanbul date '+%F %T %Z')"
+          echo "TR saati: ${tr_now}"
 
           if [ "${dow}" -gt 5 ]; then
             echo "Hafta sonu; işlem yok."
             exit 0
           fi
 
-          recent_count() {
-            local workflow="$1"
-            local minutes="$2"
-            local cutoff
-            cutoff="$(date -u -d "${minutes} minutes ago" +%Y-%m-%dT%H:%M:%SZ)"
-            gh api "repos/${REPOSITORY}/actions/workflows/${workflow}/runs?per_page=30" |
-              jq --arg cutoff "${cutoff}" '[.workflow_runs[] | select(.created_at >= $cutoff) | select(.status == "queued" or .status == "in_progress" or .conclusion == "success")] | length'
-          }
+          active_count="$(
+            gh api "repos/${REPOSITORY}/actions/workflows/telegram-market-loop.yml/runs?per_page=20" |
+              jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length'
+          )"
 
-          if (( now_min >= 605 && now_min <= 1095 )); then
-            zgyo_recent="$(recent_count zgyo-5min-v2.yml 8)"
-            if [ "${zgyo_recent}" -eq 0 ]; then
-              echo "ZGYO son 8 dakikada yok; v2 kurtarma başlatılıyor."
-              gh workflow run zgyo-5min-v2.yml --repo "${REPOSITORY}" --ref main
-            else
-              echo "ZGYO v2 yakın zamanda çalışmış."
-            fi
+          if [ "${active_count}" -gt 0 ]; then
+            echo "Telegram Market Loop zaten aktif; ek komut workflow'u baslatilmiyor."
+            exit 0
           fi
 
-          if (( now_min >= 605 && now_min <= 1085 )); then
-            asels_recent="$(recent_count asels-30min-v2.yml 34)"
-            if [ "${asels_recent}" -eq 0 ]; then
-              echo "ASELS son 34 dakikada yok; v2 kurtarma başlatılıyor."
-              gh workflow run asels-30min-v2.yml --repo "${REPOSITORY}" --ref main
-            else
-              echo "ASELS v2 yakın zamanda çalışmış."
-            fi
-          fi
-
-          if (( now_min >= 1115 && now_min <= 1130 )); then
-            asels_takas_recent="$(recent_count asels-eod-takas.yml 25)"
-            if [ "${asels_takas_recent}" -eq 0 ]; then
-              echo "ASELS takas yok; kurtarma çalıştırılıyor."
-              gh workflow run asels-eod-takas.yml --repo "${REPOSITORY}" --ref main
-            fi
-          fi
-
-          if (( now_min >= 1095 && now_min <= 1395 )); then
-            zgyo_takas_recent="$(recent_count zgyo-evening-takas.yml 34)"
-            if [ "${zgyo_takas_recent}" -eq 0 ]; then
-              echo "ZGYO akşam takas yok; kurtarma çalıştırılıyor."
-              gh workflow run zgyo-evening-takas.yml --repo "${REPOSITORY}" --ref main
-            fi
-          fi
+          echo "Telegram Market Loop aktif degil; yalniz ana loop kurtarma icin baslatiliyor."
+          gh workflow run telegram-market-loop.yml --repo "${REPOSITORY}" --ref main
