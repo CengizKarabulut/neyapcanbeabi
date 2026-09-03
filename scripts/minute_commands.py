@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 from telethon import TelegramClient
 from telethon.errors import FloodWaitError
@@ -34,6 +34,24 @@ def parse_end_time(value: str) -> datetime | None:
     return now.replace(hour=hour, minute=minute, second=second, microsecond=0)
 
 
+async def recently_sent_seconds(
+    client: TelegramClient,
+    target,
+    text: str,
+    seconds: int,
+) -> bool:
+    if seconds <= 0:
+        return False
+
+    cutoff = datetime.now(timezone.utc) - timedelta(seconds=seconds)
+    async for msg in client.iter_messages(target, limit=40):
+        if msg.date and msg.date < cutoff:
+            break
+        if msg.out and (msg.raw_text or "").strip() == text.strip():
+            return True
+    return False
+
+
 async def send_with_flood_wait(client: TelegramClient, target, message: str) -> None:
     while True:
         try:
@@ -50,6 +68,7 @@ async def main() -> None:
     settings = Settings.from_env()
     messages = [f"/{command} {settings.symbol}" for command in settings.commands]
     max_cycles = int(os.getenv("MAX_CYCLES", "0") or "0")
+    dedupe_seconds = int(os.getenv("DEDUPE_SECONDS", "0") or "0")
     end_at = parse_end_time(os.getenv("WINDOW_END", ""))
 
     if end_at and datetime.now(ISTANBUL) > end_at:
@@ -64,12 +83,13 @@ async def main() -> None:
 
         target = await resolve_target(client, settings.chat_target)
         logger.info(
-            "[%s] Dakikalık akış başladı: %s | sembol=%s | bitiş=%s | max_cycles=%s",
+            "[%s] Dakikalık akış başladı: %s | sembol=%s | bitiş=%s | max_cycles=%s | dedupe=%ss",
             now_istanbul(),
             getattr(target, "title", settings.chat_target),
             settings.symbol,
             end_at.isoformat() if end_at else "manuel",
             max_cycles or "sınırsız",
+            dedupe_seconds,
         )
 
         loop = asyncio.get_running_loop()
@@ -84,7 +104,16 @@ async def main() -> None:
             cycle_started = loop.time()
 
             for index, message in enumerate(messages):
-                await send_with_flood_wait(client, target, message)
+                if await recently_sent_seconds(client, target, message, dedupe_seconds):
+                    logger.info(
+                        "[%s] Yakın tekrar engellendi (%ss): %s",
+                        now_istanbul(),
+                        dedupe_seconds,
+                        message,
+                    )
+                else:
+                    await send_with_flood_wait(client, target, message)
+
                 if index < len(messages) - 1 and settings.command_delay_seconds > 0:
                     await asyncio.sleep(settings.command_delay_seconds)
 
