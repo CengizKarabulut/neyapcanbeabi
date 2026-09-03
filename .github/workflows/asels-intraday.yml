@@ -2,11 +2,11 @@ name: ASELS Intraday Commands
 
 on:
   schedule:
-    # Pazartesi-Cuma, Türkiye saati: 10:05-17:50 arası 15 dakikada bir
-    - cron: "5,20,35,50 10-17 * * 1-5"
+    # Pazartesi-Cuma, Türkiye saati: 10:05-17:35 arası 30 dakikada bir.
+    - cron: "5,35 10-17 * * 1-5"
       timezone: "Europe/Istanbul"
-    # 18:05 ve 18:15
-    - cron: "5,15 18 * * 1-5"
+    # Son intraday turu 18:05.
+    - cron: "5 18 * * 1-5"
       timezone: "Europe/Istanbul"
   workflow_dispatch:
 
@@ -37,5 +37,5 @@ jobs:
           SYMBOL: "ASELS"
           COMMANDS: "akd,derinlik,kurum"
           COMMAND_DELAY_SECONDS: "10"
-          DEDUPE_WINDOW_MINUTES: ${{ github.event_name == 'schedule' && '12' || '0' }}
+          DEDUPE_WINDOW_MINUTES: ${{ github.event_name == 'schedule' && '25' || '0' }}
         run: python -m src.main
