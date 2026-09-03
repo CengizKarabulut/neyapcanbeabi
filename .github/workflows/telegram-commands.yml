@@ -2,14 +2,18 @@ name: Telegram ZGYO Commands
 
 on:
   schedule:
-    # Hafta ici 10:05'te baslar ve 14:04:59'a kadar her dakika gonderir.
-    - cron: "5 10 * * 1-5"
+    # Hafta ici 10:05-10:55 arasi 5 dakikada bir.
+    - cron: "5,10,15,20,25,30,35,40,45,50,55 10 * * 1-5"
       timezone: "Europe/Istanbul"
-    # Ikinci blok 14:05'te baslar ve 18:15:59'a kadar her dakika gonderir.
-    - cron: "5 14 * * 1-5"
+    # 11:00-17:55 arasi 5 dakikada bir.
+    - cron: "*/5 11-17 * * 1-5"
+      timezone: "Europe/Istanbul"
+    # 18:00, 18:05, 18:10 ve 18:15.
+    - cron: "0,5,10,15 18 * * 1-5"
       timezone: "Europe/Istanbul"
   push:
     paths:
+      - ".github/workflows/telegram-commands.yml"
       - ".github/zgyo-bootstrap"
   workflow_dispatch:
     inputs:
@@ -18,23 +22,18 @@ on:
         required: true
         default: "ZGYO"
         type: string
-      max_cycles:
-        description: "Manuel testte kaç dakikalık tur çalışsın?"
-        required: true
-        default: "1"
-        type: string
 
 permissions:
   contents: read
 
 concurrency:
   group: telegram-target-zgyo
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   send:
     runs-on: ubuntu-latest
-    timeout-minutes: 270
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -42,7 +41,7 @@ jobs:
           python-version: "3.12"
           cache: "pip"
       - run: python -m pip install -r requirements.txt
-      - name: Send ZGYO commands every minute
+      - name: Send ZGYO commands every five minutes
         env:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
@@ -51,7 +50,5 @@ jobs:
           SYMBOL: ${{ github.event_name == 'workflow_dispatch' && inputs.symbol || 'ZGYO' }}
           COMMANDS: "akd,derinlik"
           COMMAND_DELAY_SECONDS: "10"
-          DEDUPE_SECONDS: "45"
-          WINDOW_END: ${{ github.event_name == 'schedule' && github.event.schedule == '5 10 * * 1-5' && '14:04:59' || github.event_name == 'schedule' && '18:15:59' || github.event_name == 'push' && '18:15:59' || '' }}
-          MAX_CYCLES: ${{ github.event_name == 'workflow_dispatch' && inputs.max_cycles || '0' }}
-        run: python scripts/minute_commands.py
+          DEDUPE_WINDOW_MINUTES: ${{ github.event_name == 'schedule' && '4' || '0' }}
+        run: python -m src.main
