@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+import os
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from telethon import TelegramClient
@@ -21,14 +22,11 @@ def now_istanbul() -> str:
 
 
 def web_k_to_telethon_id(chat_id: int) -> int | None:
-    """Telegram Web K'daki -XXXXXXXXXX biçimini supergroup/channel peer ID'ye çevirir."""
     if chat_id >= 0:
         return None
-
     raw = str(abs(chat_id))
     if str(chat_id).startswith("-100"):
         return None
-
     return int(f"-100{raw}")
 
 
@@ -38,11 +36,9 @@ async def resolve_target(client: TelegramClient, chat_target: int | str):
     except ChatIdInvalidError:
         if not isinstance(chat_target, int):
             raise
-
         fallback = web_k_to_telethon_id(chat_target)
         if fallback is None:
             raise
-
         logger.warning(
             "Telegram Web chat ID biçimi algılandı: %s -> %s olarak yeniden deneniyor.",
             chat_target,
@@ -51,9 +47,22 @@ async def resolve_target(client: TelegramClient, chat_target: int | str):
         return await client.get_entity(fallback)
 
 
+async def recently_sent(client: TelegramClient, target, text: str, minutes: int) -> bool:
+    if minutes <= 0:
+        return False
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
+    async for msg in client.iter_messages(target, limit=100):
+        if msg.date and msg.date < cutoff:
+            break
+        if msg.out and (msg.raw_text or "").strip() == text.strip():
+            return True
+    return False
+
+
 async def main() -> None:
     settings = Settings.from_env()
     messages = [f"/{command} {settings.symbol}" for command in settings.commands]
+    dedupe_minutes = int(os.getenv("DEDUPE_WINDOW_MINUTES", "0") or "0")
 
     client = TelegramClient(StringSession(settings.session), settings.api_id, settings.api_hash)
     try:
@@ -70,6 +79,15 @@ async def main() -> None:
         )
 
         for i, message in enumerate(messages):
+            if await recently_sent(client, target, message, dedupe_minutes):
+                logger.info(
+                    "[%s] Tekrar engellendi (%s dk pencere): %s",
+                    now_istanbul(),
+                    dedupe_minutes,
+                    message,
+                )
+                continue
+
             await client.send_message(target, message)
             logger.info("[%s] Gönderildi: %s", now_istanbul(), message)
             if i < len(messages) - 1 and settings.command_delay_seconds > 0:
