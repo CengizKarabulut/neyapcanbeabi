@@ -1,0 +1,44 @@
+name: ZGYO 5 Minute Commands
+
+on:
+  schedule:
+    # UTC cron; Turkiye UTC+3. 10:05-10:55 TRT.
+    - cron: "5-55/5 7 * * 1-5"
+    # 11:00-17:55 TRT.
+    - cron: "*/5 8-14 * * 1-5"
+    # 18:00-18:15 TRT.
+    - cron: "0,5,10,15 15 * * 1-5"
+  push:
+    paths:
+      - ".github/zgyo-v2-bootstrap"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-target-zgyo
+  cancel-in-progress: true
+
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - run: python -m pip install -r requirements.txt
+      - name: Send ZGYO 5-minute commands
+        env:
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          TELEGRAM_SESSION: ${{ secrets.TELEGRAM_SESSION }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          SYMBOL: "ZGYO"
+          COMMANDS: "akd,derinlik"
+          COMMAND_DELAY_SECONDS: "10"
+          DEDUPE_WINDOW_MINUTES: "4"
+        run: python -m src.main
