@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: asels-intraday-commands
+  group: telegram-target-asels
   cancel-in-progress: false
 
 jobs:
