@@ -88,22 +88,34 @@ jobs:
             minute="$(TZ=Europe/Istanbul date +%M)"
             second="$(TZ=Europe/Istanbul date +%S)"
             now_min=$((10#${hour} * 60 + 10#${minute}))
+            zgyo_sent_this_slot=0
 
-            # Bootstrap anında aktif seanstaysak ZGYO'yu bir kez kurtar; sonraki turlar 5 dk sinirina hizalanir.
+            # Bootstrap aninda aktif seanstaysak ZGYO'yu bir kez kurtar; sonraki turlar 5 dk sinirina hizalanir.
             if [ "${first_iteration}" -eq 1 ] && [ "${dow}" -le 5 ] && (( now_min >= 605 && now_min <= 1095 )); then
               send_zgyo_intraday || true
+              zgyo_sent_this_slot=1
             fi
             first_iteration=0
 
             # Sadece 5 dakikalik saat sinirlarinda planli islemleri yap.
             if [ "${dow}" -le 5 ] && (( 10#${minute} % 5 == 0 )); then
               if (( now_min >= 605 && now_min <= 1095 )); then
-                send_zgyo_intraday || true
+                # Bootstrap turu bu slotta ZGYO'yu zaten gonderdiyse ikinci kez deneme.
+                if [ "${zgyo_sent_this_slot}" -eq 0 ]; then
+                  send_zgyo_intraday || true
+                  zgyo_sent_this_slot=1
+                fi
               fi
 
               # ASELS 10:05-17:35 arasi :05/:35 ve son tur 18:05.
               if { (( 10#${hour} >= 10 && 10#${hour} <= 17 )) && { [ "${minute}" = "05" ] || [ "${minute}" = "35" ]; }; } \
                  || { [ "${hour}" = "18" ] && [ "${minute}" = "05" ]; }; then
+                # ZGYO'nun son gorsel komutu ile ASELS'in ilk /akd komutu arasinda
+                # botun global gorsel cooldown'ini asmak icin ayrica 10 saniye bekle.
+                if [ "${zgyo_sent_this_slot}" -eq 1 ]; then
+                  echo "ZGYO -> ASELS gorsel cooldown: 10 saniye bekleniyor."
+                  sleep 10
+                fi
                 send_asels_intraday || true
               fi
 
