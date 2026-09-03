@@ -1,16 +1,6 @@
 name: ZGYO 5 Minute Commands
 
 on:
-  schedule:
-    # UTC cron; Turkiye UTC+3. 10:05-10:55 TRT.
-    - cron: "5-55/5 7 * * 1-5"
-    # 11:00-17:55 TRT.
-    - cron: "*/5 8-14 * * 1-5"
-    # 18:00-18:15 TRT.
-    - cron: "0,5,10,15 15 * * 1-5"
-  push:
-    paths:
-      - ".github/zgyo-v2-bootstrap"
   workflow_dispatch:
 
 permissions:
@@ -25,13 +15,29 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Guard Turkish market hours
+        id: guard
+        shell: bash
+        run: |
+          now="$(TZ=Europe/Istanbul date +%H%M)"
+          dow="$(TZ=Europe/Istanbul date +%u)"
+          if [ "${dow}" -le 5 ] && [ "${now}" -ge 1005 ] && [ "${now}" -le 1815 ]; then
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+            echo "ZGYO AKD/derinlik piyasa saati disinda engellendi: $(TZ=Europe/Istanbul date '+%F %T')"
+          fi
       - uses: actions/checkout@v4
+        if: steps.guard.outputs.allowed == 'true'
       - uses: actions/setup-python@v5
+        if: steps.guard.outputs.allowed == 'true'
         with:
           python-version: "3.12"
           cache: "pip"
-      - run: python -m pip install -r requirements.txt
+      - if: steps.guard.outputs.allowed == 'true'
+        run: python -m pip install -r requirements.txt
       - name: Send ZGYO 5-minute commands
+        if: steps.guard.outputs.allowed == 'true'
         env:
           TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
           TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
