@@ -5,6 +5,9 @@ on:
   schedule:
     - cron: "*/5 10-23 * * 1-5"
       timezone: "Europe/Istanbul"
+  push:
+    paths:
+      - ".github/heartbeat-bootstrap"
   workflow_dispatch:
 
 permissions:
@@ -29,7 +32,6 @@ jobs:
           set -euo pipefail
 
           dow="$(TZ=Europe/Istanbul date +%u)"
-          hm="$(TZ=Europe/Istanbul date +%H:%M)"
           hour="$(TZ=Europe/Istanbul date +%H)"
           minute="$(TZ=Europe/Istanbul date +%M)"
           now_min=$((10#${hour} * 60 + 10#${minute}))
@@ -54,7 +56,6 @@ jobs:
               jq --arg cutoff "${cutoff}" '[.workflow_runs[] | select(.created_at >= $cutoff) | select(.status == "queued" or .status == "in_progress" or .conclusion == "success")] | length'
           }
 
-          # ZGYO dakikalık akış: 10:05-18:15 arasında sürekli aktif kalmalı.
           if (( now_min >= 605 && now_min <= 1095 )); then
             zgyo_active="$(active_count telegram-commands.yml)"
             if [ "${zgyo_active}" -eq 0 ]; then
@@ -72,7 +73,6 @@ jobs:
             fi
           fi
 
-          # ASELS intraday: 10:05-18:15 arasında yaklaşık 15 dakikalık ritim.
           if (( now_min >= 605 && now_min <= 1095 )); then
             asels_recent="$(recent_count asels-intraday.yml 14)"
             if [ "${asels_recent}" -eq 0 ]; then
@@ -83,7 +83,6 @@ jobs:
             fi
           fi
 
-          # 18:30 ASELS takas kaçarsa 18:35-18:50 arası tamamla.
           if (( now_min >= 1115 && now_min <= 1130 )); then
             asels_takas_recent="$(recent_count asels-eod-takas.yml 25)"
             if [ "${asels_takas_recent}" -eq 0 ]; then
@@ -92,7 +91,6 @@ jobs:
             fi
           fi
 
-          # ZGYO akşam takas: 18:15-23:15 arası her 30 dakika. Son 34 dk içinde koşu yoksa tamamla.
           if (( now_min >= 1095 && now_min <= 1395 )); then
             zgyo_takas_recent="$(recent_count zgyo-evening-takas.yml 34)"
             if [ "${zgyo_takas_recent}" -eq 0 ]; then
