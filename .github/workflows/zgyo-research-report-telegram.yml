@@ -23,13 +23,12 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: pip
       - name: Install report dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install Telethon==1.43.0 pandas numpy matplotlib openpyxl requests
-          pip install git+https://github.com/saidsurucu/borsapy.git
           git clone --depth 1 https://github.com/CengizKarabulut/taramabot.git /tmp/taramabot
+          pip install -r /tmp/taramabot/requirements-cached-scan.txt
+          pip install Telethon==1.43.0 pytest
       - name: Build live ZGYO multi-timeframe database
         env:
           MPLBACKEND: Agg
@@ -109,7 +108,6 @@ jobs:
               pass
 
           md = Path('data/zgyo-report/reports/ZGYO/report.md').read_text(encoding='utf-8')
-          mtf = Path('data/zgyo-report/mtf/ZGYO/mtf_context.md').read_text(encoding='utf-8')
           text = '📊 ZGYO · Araştırma Raporu\n\n' + md
           if len(text) > 3900:
               text = text[:3850] + '\n\n…rapor kısaltıldı; görseller aşağıda.'
