@@ -92,20 +92,21 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           cd /tmp/taramabot
-          python - <<'PY'
+          PYTHONPATH="$GITHUB_WORKSPACE:$PYTHONPATH" python - <<'PY'
           import asyncio, os
           from pathlib import Path
           from telethon import TelegramClient
           from telethon.sessions import StringSession
+          from src.main import resolve_target
 
           api_id = int(os.environ['TELEGRAM_API_ID'])
           api_hash = os.environ['TELEGRAM_API_HASH']
           session = os.environ['TELEGRAM_SESSION']
-          target = os.environ['TELEGRAM_CHAT_ID']
+          target_raw = os.environ['TELEGRAM_CHAT_ID'].strip()
           try:
-              target = int(target)
+              chat_target = int(target_raw)
           except ValueError:
-              pass
+              chat_target = target_raw
 
           md = Path('data/zgyo-report/reports/ZGYO/report.md').read_text(encoding='utf-8')
           text = '📊 ZGYO · Araştırma Raporu\n\n' + md
@@ -121,21 +122,26 @@ jobs:
 
           async def main():
               client = TelegramClient(StringSession(session), api_id, api_hash)
-              await client.connect()
-              if not await client.is_user_authorized():
-                  raise RuntimeError('Telegram session is not authorized')
-              await client.send_message(target, text)
-              if files:
-                  await client.send_file(target, files, caption='ZGYO · Çoklu zaman dilimi + temel/bilanço görselleri')
-              await client.disconnect()
+              try:
+                  await client.connect()
+                  if not await client.is_user_authorized():
+                      raise RuntimeError('Telegram session is not authorized')
+                  target = await resolve_target(client, chat_target)
+                  print('Resolved Telegram target:', getattr(target, 'title', '?'), getattr(target, 'id', '?'))
+                  await client.send_message(target, text)
+                  if files:
+                      await client.send_file(target, files, caption='ZGYO · Çoklu zaman dilimi + temel/bilanço görselleri')
+              finally:
+                  await client.disconnect()
 
           asyncio.run(main())
           print('Telegram report sent:', len(files), 'image(s)')
           PY
       - name: Upload smoke artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: zgyo-research-report
           path: /tmp/taramabot/data/zgyo-report
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 7
