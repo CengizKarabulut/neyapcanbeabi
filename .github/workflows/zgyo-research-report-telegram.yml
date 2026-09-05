@@ -56,12 +56,14 @@ jobs:
           print('ZGYO bars:', len(intraday), len(daily))
           PY
           python multi_timeframe_context.py --db data/zgyo_report.sqlite --symbols ZGYO --output-dir data/zgyo-report/mtf
+          python report_quality.py --mtf-json data/zgyo-report/mtf/ZGYO/mtf_context.json
       - name: Build fundamental and 8-quarter report
         env:
           MPLBACKEND: Agg
         run: |
           cd /tmp/taramabot
           python fundamental_peer_refresh.py --output-dir data/fundamentals
+          python report_quality.py --peer-csv data/fundamentals/latest.csv
           python - <<'PY'
           import json
           from pathlib import Path
@@ -74,7 +76,7 @@ jobs:
               'structure':{
                   'trend':h4.get('trend'), 'bos':h4.get('bos'),
                   'last_swing_high':h4.get('last_swing_high'), 'last_swing_low':h4.get('last_swing_low'),
-                  'pivots':h4.get('pivots', [])
+                  'pivots':h4.get('pivots', []), 'level_note':h4.get('level_note')
               },
               'elliott':h4.get('elliott', {}), 'chart':'mtf/ZGYO/mtf_structure.png'
           }
@@ -82,7 +84,7 @@ jobs:
           out.parent.mkdir(parents=True, exist_ok=True)
           out.write_text(json.dumps({'candidates':[candidate]}, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
           PY
-          python fundamental_data_pipeline.py candidates --visual-json data/zgyo-report/manual_visual.json --peer-csv data/fundamentals/latest.csv --output-dir data/zgyo-report/quarterly
+          python fundamental_data_pipeline_safe.py --visual-json data/zgyo-report/manual_visual.json --peer-csv data/fundamentals/latest.csv --output-dir data/zgyo-report/quarterly
           python institutional_stock_report.py --visual-json data/zgyo-report/manual_visual.json --fundamentals-csv data/fundamentals/latest.csv --fundamental-trends-dir data/zgyo-report/quarterly --output-dir data/zgyo-report/reports
       - name: Send report to Telegram
         env:
@@ -109,7 +111,7 @@ jobs:
               chat_target = target_raw
 
           md = Path('data/zgyo-report/reports/ZGYO/report.md').read_text(encoding='utf-8')
-          text = '📊 ZGYO · Araştırma Raporu\n\n' + md
+          text = '📊 ZGYO · Araştırma Raporu (Kalite Kontrolü Geçti)\n\n' + md
           if len(text) > 3900:
               text = text[:3850] + '\n\n…rapor kısaltıldı; görseller aşağıda.'
 
