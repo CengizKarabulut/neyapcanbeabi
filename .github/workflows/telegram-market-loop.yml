@@ -62,26 +62,6 @@ jobs:
             python -m src.main
           }
 
-          send_asels_takas() {
-            echo "[$(TZ=Europe/Istanbul date '+%F %T')] ASELS takas"
-            TELEGRAM_CHAT_ID="@aselsanhissee" \
-            SYMBOL="ASELS" \
-            COMMANDS="takas" \
-            COMMAND_DELAY_SECONDS="10" \
-            DEDUPE_WINDOW_MINUTES="25" \
-            python -m src.main
-          }
-
-          send_zgyo_takas() {
-            echo "[$(TZ=Europe/Istanbul date '+%F %T')] ZGYO takas"
-            TELEGRAM_CHAT_ID="${ZGYO_CHAT_ID}" \
-            SYMBOL="ZGYO" \
-            COMMANDS="takas" \
-            COMMAND_DELAY_SECONDS="10" \
-            DEDUPE_WINDOW_MINUTES="20" \
-            python -m src.main
-          }
-
           while true; do
             dow="$(TZ=Europe/Istanbul date +%u)"
             hour="$(TZ=Europe/Istanbul date +%H)"
@@ -117,17 +97,6 @@ jobs:
                   sleep 10
                 fi
                 send_asels_intraday || true
-              fi
-
-              # ASELS kapanis takasi 18:30.
-              if [ "${hour}" = "18" ] && [ "${minute}" = "30" ]; then
-                send_asels_takas || true
-              fi
-
-              # ZGYO aksam takas: 18:15/45 ... 22:15/45 ve 23:15.
-              if { (( 10#${hour} >= 18 && 10#${hour} <= 22 )) && { [ "${minute}" = "15" ] || [ "${minute}" = "45" ]; }; } \
-                 || { [ "${hour}" = "23" ] && [ "${minute}" = "15" ]; }; then
-                send_zgyo_takas || true
               fi
             fi
 
