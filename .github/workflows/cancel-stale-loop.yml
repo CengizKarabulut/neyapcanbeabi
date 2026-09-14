@@ -13,9 +13,9 @@ jobs:
   cancel:
     runs-on: ubuntu-latest
     steps:
-      - name: Cancel stale Telegram Market Loop run
+      - name: Force-cancel stale Telegram Market Loop run
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh api --method POST \
-            "repos/${GITHUB_REPOSITORY}/actions/runs/34862000471/cancel" || true
+            "repos/${GITHUB_REPOSITORY}/actions/runs/34862000471/force-cancel" || true
