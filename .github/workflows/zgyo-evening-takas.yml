@@ -2,11 +2,8 @@ name: ZGYO Evening Takas
 
 on:
   schedule:
-    # Hafta ici 18:15-22:45 arasi her yarim saatte bir.
-    - cron: "15,45 18-22 * * 1-5"
-      timezone: "Europe/Istanbul"
-    # Son tur 23:15.
-    - cron: "15 23 * * 1-5"
+    # Pazartesi-Cuma, Türkiye saati 19:30
+    - cron: "30 19 * * 1-5"
       timezone: "Europe/Istanbul"
   workflow_dispatch:
 
