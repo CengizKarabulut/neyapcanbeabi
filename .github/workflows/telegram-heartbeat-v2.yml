@@ -19,7 +19,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Cancel all other active Telegram repository runs
+      - name: Force-cancel all other active repository runs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
@@ -31,6 +31,7 @@ jobs:
             --jq '.workflow_runs[] | select((.status == "in_progress" or .status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested") and (.id | tostring) != env.CURRENT_RUN_ID) | .id' \
             | while read -r run_id; do
                 [ -z "${run_id}" ] && continue
-                echo "Cancelling run ${run_id}"
-                gh api -X POST "repos/${REPOSITORY}/actions/runs/${run_id}/cancel" || true
+                echo "Force-cancelling run ${run_id}"
+                gh api -X POST "repos/${REPOSITORY}/actions/runs/${run_id}/force-cancel" || \
+                  gh api -X POST "repos/${REPOSITORY}/actions/runs/${run_id}/cancel" || true
               done
