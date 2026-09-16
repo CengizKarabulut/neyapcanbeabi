@@ -1,10 +1,6 @@
 name: ASELS End of Day Takas
 
 on:
-  schedule:
-    # Pazartesi-Cuma, Türkiye saati 19:30
-    - cron: "30 19 * * 1-5"
-      timezone: "Europe/Istanbul"
   workflow_dispatch:
 
 permissions:
@@ -16,6 +12,7 @@ concurrency:
 
 jobs:
   send:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -34,5 +31,5 @@ jobs:
           SYMBOL: "ASELS"
           COMMANDS: "takas"
           COMMAND_DELAY_SECONDS: "10"
-          DEDUPE_WINDOW_MINUTES: ${{ github.event_name == 'schedule' && '12' || '0' }}
+          DEDUPE_WINDOW_MINUTES: "0"
         run: python -m src.main
