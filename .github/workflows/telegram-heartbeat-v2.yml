@@ -1,13 +1,6 @@
 name: Telegram Recovery Heartbeat v2
 
 on:
-  schedule:
-    # Hafta ici 10:00-23:59 TRT. Cron gecikse bile sadece ana loop'u kontrol eder;
-    # tek tek Telegram komutlarini dogrudan gondermez.
-    - cron: "*/5 7-20 * * 1-5"
-  push:
-    paths:
-      - ".github/heartbeat-v2-bootstrap"
   workflow_dispatch:
 
 permissions:
@@ -20,6 +13,7 @@ concurrency:
 
 jobs:
   recover:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
