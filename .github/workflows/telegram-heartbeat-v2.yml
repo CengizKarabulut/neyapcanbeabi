@@ -1,6 +1,9 @@
-name: Telegram Recovery Heartbeat v2
+name: Telegram Emergency Freeze
 
 on:
+  push:
+    paths:
+      - ".github/heartbeat-v2-bootstrap"
   workflow_dispatch:
 
 permissions:
@@ -8,41 +11,26 @@ permissions:
   contents: read
 
 concurrency:
-  group: telegram-recovery-v2
+  group: telegram-emergency-freeze
   cancel-in-progress: true
 
 jobs:
-  recover:
-    if: ${{ false }}
+  cancel:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - name: Recover live Telegram market loop
+      - name: Cancel all other active Telegram repository runs
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           REPOSITORY: ${{ github.repository }}
+          CURRENT_RUN_ID: ${{ github.run_id }}
         shell: bash
         run: |
           set -euo pipefail
-
-          dow="$(TZ=Europe/Istanbul date +%u)"
-          tr_now="$(TZ=Europe/Istanbul date '+%F %T %Z')"
-          echo "TR saati: ${tr_now}"
-
-          if [ "${dow}" -gt 5 ]; then
-            echo "Hafta sonu; işlem yok."
-            exit 0
-          fi
-
-          active_count="$(
-            gh api "repos/${REPOSITORY}/actions/workflows/telegram-market-loop.yml/runs?per_page=20" |
-              jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress")] | length'
-          )"
-
-          if [ "${active_count}" -gt 0 ]; then
-            echo "Telegram Market Loop zaten aktif; ek komut workflow'u baslatilmiyor."
-            exit 0
-          fi
-
-          echo "Telegram Market Loop aktif degil; yalniz ana loop kurtarma icin baslatiliyor."
-          gh workflow run telegram-market-loop.yml --repo "${REPOSITORY}" --ref main
+          gh api "repos/${REPOSITORY}/actions/runs?per_page=100" \
+            --jq '.workflow_runs[] | select((.status == "in_progress" or .status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested") and (.id | tostring) != env.CURRENT_RUN_ID) | .id' \
+            | while read -r run_id; do
+                [ -z "${run_id}" ] && continue
+                echo "Cancelling run ${run_id}"
+                gh api -X POST "repos/${REPOSITORY}/actions/runs/${run_id}/cancel" || true
+              done
