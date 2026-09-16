@@ -1,10 +1,6 @@
 name: ZGYO Evening Takas
 
 on:
-  schedule:
-    # Pazartesi-Cuma, Türkiye saati 19:30
-    - cron: "30 19 * * 1-5"
-      timezone: "Europe/Istanbul"
   workflow_dispatch:
 
 permissions:
@@ -16,6 +12,7 @@ concurrency:
 
 jobs:
   send:
+    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
