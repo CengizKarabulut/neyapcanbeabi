@@ -1,9 +1,6 @@
-name: Telegram Emergency Freeze
+name: Telegram Recovery Heartbeat v2
 
 on:
-  push:
-    paths:
-      - ".github/heartbeat-v2-bootstrap"
   workflow_dispatch:
 
 permissions:
@@ -11,27 +8,14 @@ permissions:
   contents: read
 
 concurrency:
-  group: telegram-emergency-freeze
+  group: telegram-recovery-v2
   cancel-in-progress: true
 
 jobs:
-  cancel:
+  recover:
+    if: ${{ false }}
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Force-cancel all other active repository runs
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          REPOSITORY: ${{ github.repository }}
-          CURRENT_RUN_ID: ${{ github.run_id }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          gh api "repos/${REPOSITORY}/actions/runs?per_page=100" \
-            --jq '.workflow_runs[] | select((.status == "in_progress" or .status == "queued" or .status == "pending" or .status == "waiting" or .status == "requested") and (.id | tostring) != env.CURRENT_RUN_ID) | .id' \
-            | while read -r run_id; do
-                [ -z "${run_id}" ] && continue
-                echo "Force-cancelling run ${run_id}"
-                gh api -X POST "repos/${REPOSITORY}/actions/runs/${run_id}/force-cancel" || \
-                  gh api -X POST "repos/${REPOSITORY}/actions/runs/${run_id}/cancel" || true
-              done
+      - name: Frozen repository guard
+        run: echo "Repository automation is frozen."
