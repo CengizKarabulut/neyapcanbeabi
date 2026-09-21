@@ -11,6 +11,7 @@ on:
       - "scripts/asels_scheduler.py"
       - "src/main.py"
       - "src/config.py"
+      - "requirements.txt"
   workflow_run:
     workflows: ["ASELS Live Loop"]
     types: [completed]
@@ -32,7 +33,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
     steps:
-      - name: Keep exactly one current ASELS Live Loop
+      - name: Keep one healthy current ASELS Live Loop
         shell: bash
         run: |
           set -euo pipefail
@@ -40,8 +41,35 @@ jobs:
           echo "Recovery event: ${GITHUB_EVENT_NAME}"
           echo "TR saati: $(TZ=Europe/Istanbul date '+%F %T %Z')"
 
-          main_sha="$(gh api "repos/${REPOSITORY}/commits/main" --jq '.sha')"
-          echo "Current main SHA: ${main_sha}"
+          runtime_paths=(
+            ".github/workflows/asels-live-loop.yml"
+            "scripts/asels_scheduler.py"
+            "src/main.py"
+            "src/config.py"
+            "requirements.txt"
+          )
+
+          file_sha() {
+            local ref="$1"
+            local path="$2"
+            gh api "repos/${REPOSITORY}/contents/${path}?ref=${ref}" --jq '.sha'
+          }
+
+          runtime_is_current() {
+            local ref="$1"
+            local path main_blob run_blob
+            for path in "${runtime_paths[@]}"; do
+              main_blob="$(file_sha main "${path}")"
+              run_blob="$(file_sha "${ref}" "${path}" 2>/dev/null || true)"
+              if [ -z "${run_blob}" ] || [ "${run_blob}" != "${main_blob}" ]; then
+                echo "Runtime mismatch: ${path} main=${main_blob} run=${run_blob}" >&2
+                return 1
+              fi
+            done
+            return 0
+          }
+
+          now_epoch="$(date +%s)"
 
           gh api "repos/${REPOSITORY}/actions/workflows/asels-live-loop.yml/runs?per_page=30" \
             --jq '.workflow_runs[] | select(.status == "queued" or .status == "in_progress" or .status == "pending" or .status == "waiting" or .status == "requested") | [.id,.status,.head_sha,.created_at] | @tsv' \
@@ -49,29 +77,55 @@ jobs:
 
           while IFS=$'\t' read -r run_id status head_sha created_at; do
             [ -z "${run_id:-}" ] && continue
-            if [ "${head_sha}" != "${main_sha}" ]; then
-              echo "Stale ASELS loop detected: run=${run_id} status=${status} sha=${head_sha}; force-cancelling."
+            created_epoch="$(date -d "${created_at}" +%s)"
+            age_minutes=$(( (now_epoch - created_epoch) / 60 ))
+            stale=0
+
+            if ! runtime_is_current "${head_sha}"; then
+              stale=1
+            fi
+
+            if [ "${status}" = "in_progress" ] && [ "${age_minutes}" -gt 270 ]; then
+              echo "Run ${run_id} exceeded 270 minutes (${age_minutes}m)." >&2
+              stale=1
+            fi
+
+            if { [ "${status}" = "queued" ] || [ "${status}" = "pending" ] || [ "${status}" = "waiting" ] || [ "${status}" = "requested" ]; } \
+               && [ "${age_minutes}" -gt 15 ]; then
+              echo "Run ${run_id} stuck in ${status} for ${age_minutes}m." >&2
+              stale=1
+            fi
+
+            if [ "${stale}" -eq 1 ]; then
+              echo "Cancelling stale ASELS loop: run=${run_id} status=${status} age=${age_minutes}m sha=${head_sha}"
               gh api -X POST "repos/${REPOSITORY}/actions/runs/${run_id}/force-cancel" || \
                 gh api -X POST "repos/${REPOSITORY}/actions/runs/${run_id}/cancel" || true
             else
-              echo "Current ASELS loop candidate: run=${run_id} status=${status}"
+              echo "Healthy ASELS loop: run=${run_id} status=${status} age=${age_minutes}m sha=${head_sha}"
             fi
           done < /tmp/asels-active.tsv
 
           sleep 3
 
-          current_count="$(
-            gh api "repos/${REPOSITORY}/actions/workflows/asels-live-loop.yml/runs?per_page=30" |
-              jq --arg sha "${main_sha}" '[.workflow_runs[] | select((.status == "queued" or .status == "in_progress" or .status == "pending" or .status == "waiting" or .status == "requested") and .head_sha == $sha)] | length'
-          )"
+          healthy_count=0
+          gh api "repos/${REPOSITORY}/actions/workflows/asels-live-loop.yml/runs?per_page=30" \
+            --jq '.workflow_runs[] | select(.status == "queued" or .status == "in_progress" or .status == "pending" or .status == "waiting" or .status == "requested") | [.id,.status,.head_sha,.created_at] | @tsv' \
+            > /tmp/asels-after.tsv
 
-          echo "Current active/queued ASELS Live Loop count: ${current_count}"
+          while IFS=$'\t' read -r run_id status head_sha created_at; do
+            [ -z "${run_id:-}" ] && continue
+            if runtime_is_current "${head_sha}"; then
+              healthy_count=$((healthy_count + 1))
+            fi
+          done < /tmp/asels-after.tsv
 
-          if [ "${current_count}" -gt 0 ]; then
-            echo "Current ASELS Live Loop already exists; no dispatch needed."
+          echo "Healthy active/queued ASELS Live Loop count: ${healthy_count}"
+
+          if [ "${healthy_count}" -gt 0 ]; then
+            echo "ASELS Live Loop healthy; no dispatch needed."
             exit 0
           fi
 
-          echo "No current ASELS Live Loop; dispatching one."
+          echo "No healthy ASELS Live Loop; dispatching one."
           gh workflow run asels-live-loop.yml --repo "${REPOSITORY}" --ref main
           echo "Recovery dispatch successful."
