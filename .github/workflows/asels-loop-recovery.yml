@@ -1,11 +1,16 @@
 name: ASELS Loop Recovery
 
 on:
-  # Cron artık yalnız üçüncü güvenlik katmanı; ana çalışma buna bağlı değil.
   schedule:
     - cron: "*/15 * * * *"
   push:
     branches: [main]
+    paths:
+      - ".github/workflows/asels-loop-recovery.yml"
+      - ".github/workflows/asels-live-loop.yml"
+      - "scripts/asels_scheduler.py"
+      - "src/main.py"
+      - "src/config.py"
   workflow_run:
     workflows: ["ASELS Live Loop"]
     types: [completed]
@@ -27,7 +32,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
     steps:
-      - name: Ensure ASELS Live Loop is running
+      - name: Keep exactly one current ASELS Live Loop
         shell: bash
         run: |
           set -euo pipefail
@@ -35,18 +40,38 @@ jobs:
           echo "Recovery event: ${GITHUB_EVENT_NAME}"
           echo "TR saati: $(TZ=Europe/Istanbul date '+%F %T %Z')"
 
-          active_count="$(
+          main_sha="$(gh api "repos/${REPOSITORY}/commits/main" --jq '.sha')"
+          echo "Current main SHA: ${main_sha}"
+
+          gh api "repos/${REPOSITORY}/actions/workflows/asels-live-loop.yml/runs?per_page=30" \
+            --jq '.workflow_runs[] | select(.status == "queued" or .status == "in_progress" or .status == "pending" or .status == "waiting" or .status == "requested") | [.id,.status,.head_sha,.created_at] | @tsv' \
+            > /tmp/asels-active.tsv
+
+          while IFS=$'\t' read -r run_id status head_sha created_at; do
+            [ -z "${run_id:-}" ] && continue
+            if [ "${head_sha}" != "${main_sha}" ]; then
+              echo "Stale ASELS loop detected: run=${run_id} status=${status} sha=${head_sha}; force-cancelling."
+              gh api -X POST "repos/${REPOSITORY}/actions/runs/${run_id}/force-cancel" || \
+                gh api -X POST "repos/${REPOSITORY}/actions/runs/${run_id}/cancel" || true
+            else
+              echo "Current ASELS loop candidate: run=${run_id} status=${status}"
+            fi
+          done < /tmp/asels-active.tsv
+
+          sleep 3
+
+          current_count="$(
             gh api "repos/${REPOSITORY}/actions/workflows/asels-live-loop.yml/runs?per_page=30" |
-              jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested")] | length'
+              jq --arg sha "${main_sha}" '[.workflow_runs[] | select((.status == "queued" or .status == "in_progress" or .status == "pending" or .status == "waiting" or .status == "requested") and .head_sha == $sha)] | length'
           )"
 
-          echo "Aktif/queued ASELS Live Loop sayısı: ${active_count}"
+          echo "Current active/queued ASELS Live Loop count: ${current_count}"
 
-          if [ "${active_count}" -gt 0 ]; then
-            echo "ASELS Live Loop zaten çalışıyor; işlem yok."
+          if [ "${current_count}" -gt 0 ]; then
+            echo "Current ASELS Live Loop already exists; no dispatch needed."
             exit 0
           fi
 
-          echo "ASELS Live Loop çalışmıyor; yeniden başlatılıyor."
+          echo "No current ASELS Live Loop; dispatching one."
           gh workflow run asels-live-loop.yml --repo "${REPOSITORY}" --ref main
-          echo "Recovery dispatch başarılı."
+          echo "Recovery dispatch successful."
