@@ -2,9 +2,27 @@
 
 Bu repo yalnızca **ASELS** için Telegram komut otomasyonu çalıştırır.
 
+## Açılış öncesi teorik fiyat komutu
+
+Pazartesi-Cuma, Türkiye saatiyle aşağıdaki saatlerde:
+
+```text
+09:40
+09:45
+09:50
+09:55
+09:58
+```
+
+şu komut gönderilir:
+
+```text
+/teorik ASELS
+```
+
 ## Gün içi komutlar
 
-Pazartesi-Cuma, Türkiye saatiyle 10:05-17:35 arasında her 30 dakikada bir (`:05` ve `:35`) ve ayrıca 18:05'te:
+Pazartesi-Cuma, Türkiye saatiyle **10:05'ten başlayarak 15 dakikada bir** 17:50'ye kadar ve ardından **18:05 ile 18:15'te**:
 
 ```text
 /akd ASELS
@@ -16,7 +34,7 @@ Komutlar arasında 10 saniye beklenir.
 
 ## Gün sonu takas
 
-Pazartesi-Cuma, Türkiye saatiyle 19:30'da:
+Pazartesi-Cuma, Türkiye saatiyle **19:30'da yalnızca**:
 
 ```text
 /takas ASELS
@@ -59,7 +77,8 @@ Program API_ID ve API_HASH ister. Telegram hesabına giriş yaptıktan sonra olu
 
 GitHub > Actions bölümünde:
 
-- `ASELS 30 Minute Commands` > `Run workflow`
+- `ASELS Pre-Open Teorik` > `Run workflow`
+- `ASELS Intraday Commands` > `Run workflow`
 - `ASELS End of Day Takas` > `Run workflow`
 
-Gün içi workflow'u piyasa saatleri dışında komut göndermemek için ayrıca saat kontrolü yapar.
+Gün içi workflow'u 10:05-18:15 saat aralığı dışında komut göndermemek için ayrıca saat kontrolü yapar.
