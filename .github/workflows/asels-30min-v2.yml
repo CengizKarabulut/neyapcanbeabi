@@ -2,12 +2,10 @@ name: ASELS Intraday Commands
 
 on:
   schedule:
-    # Pazartesi-Cuma, Türkiye saati 10:05-17:50 arası 15 dakikada bir
-    - cron: "5,20,35,50 10-17 * * 1-5"
-      timezone: "Europe/Istanbul"
-    # Seans sonuna doğru 18:05 ve son tur 18:15
-    - cron: "5,15 18 * * 1-5"
-      timezone: "Europe/Istanbul"
+    # Türkiye saati 10:05-17:50 arası 15 dakikada bir (UTC+3 -> 07:05-14:50 UTC)
+    - cron: "5,20,35,50 7-14 * * 1-5"
+    # Türkiye saati 18:05 ve 18:15 (UTC+3 -> 15:05 ve 15:15 UTC)
+    - cron: "5,15 15 * * 1-5"
   workflow_dispatch:
 
 permissions:
