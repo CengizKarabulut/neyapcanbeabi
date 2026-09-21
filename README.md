@@ -1,37 +1,49 @@
-# Telegram ZGYO Komut Gönderici
+# Telegram ASELS Komut Gönderici
 
-Bu repo hafta içi Türkiye saatiyle 10:05-18:15 arasında belirli zamanlarda Telegram grubuna kullanıcı hesabı üzerinden şu komutları gönderir:
+Bu repo yalnızca **ASELS** için Telegram komut otomasyonu çalıştırır.
+
+## Gün içi komutlar
+
+Pazartesi-Cuma, Türkiye saatiyle 10:05-17:35 arasında her 30 dakikada bir (`:05` ve `:35`) ve ayrıca 18:05'te:
 
 ```text
-/akd ZGYO
-/derinlik ZGYO
+/akd ASELS
+/derinlik ASELS
+/kurum ASELS
 ```
 
-## Zamanlama
-- 10:05-17:50 arası 15 dakikada bir
-- 18:05 normal son tur
-- 18:15 özel kapanış turu
-- Pazartesi-Cuma
+Komutlar arasında 10 saniye beklenir.
+
+## Gün sonu takas
+
+Pazartesi-Cuma, Türkiye saatiyle 19:30'da:
+
+```text
+/takas ASELS
+```
+
+## Telegram hedefi
+
+ASELS komutları şu Telegram grubuna gönderilir:
+
+```text
+@aselsanhissee
+```
 
 ## Gerekli GitHub Secrets
-Repo > Settings > Secrets and variables > Actions > New repository secret
 
-Şunları ekle:
+Repo > Settings > Secrets and variables > Actions bölümünde aşağıdaki secret'lar bulunmalıdır:
 
 ```text
 TELEGRAM_API_ID
 TELEGRAM_API_HASH
 TELEGRAM_SESSION
-TELEGRAM_CHAT_ID
 ```
 
-Bu grup için mevcut aday CHAT_ID:
-
-```text
--3740330661
-```
+`TELEGRAM_CHAT_ID` secret'ı bu ASELS-only sürümünde kullanılmaz; hedef workflow içinde `@aselsanhissee` olarak tanımlıdır.
 
 ## TELEGRAM_SESSION üretme
+
 Bilgisayarda:
 
 ```powershell
@@ -41,11 +53,13 @@ python -m pip install -r requirements.txt
 python scripts/generate_session.py
 ```
 
-Program API_ID ve API_HASH ister. Ardından Telegram hesabına giriş yaparsın ve oluşan uzun değeri `TELEGRAM_SESSION` secret'ına kaydedersin.
+Program API_ID ve API_HASH ister. Telegram hesabına giriş yaptıktan sonra oluşan uzun oturum değerini `TELEGRAM_SESSION` secret'ına kaydet.
 
-## Test
-GitHub'da:
+## Manuel test
 
-Actions > Telegram ZGYO Commands > Run workflow
+GitHub > Actions bölümünde:
 
-İlk canlı testte hedef grubun doğru olduğundan emin ol. `TELEGRAM_SESSION` ve `TELEGRAM_API_HASH` değerlerini asla normal dosyaya yazma.
+- `ASELS 30 Minute Commands` > `Run workflow`
+- `ASELS End of Day Takas` > `Run workflow`
+
+Gün içi workflow'u piyasa saatleri dışında komut göndermemek için ayrıca saat kontrolü yapar.
