@@ -1,0 +1,52 @@
+name: ASELS Loop Recovery
+
+on:
+  # Cron artık yalnız üçüncü güvenlik katmanı; ana çalışma buna bağlı değil.
+  schedule:
+    - cron: "*/15 * * * *"
+  push:
+    branches: [main]
+  workflow_run:
+    workflows: ["ASELS Live Loop"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: asels-loop-recovery
+  cancel-in-progress: true
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPOSITORY: ${{ github.repository }}
+    steps:
+      - name: Ensure ASELS Live Loop is running
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Recovery event: ${GITHUB_EVENT_NAME}"
+          echo "TR saati: $(TZ=Europe/Istanbul date '+%F %T %Z')"
+
+          active_count="$(
+            gh api "repos/${REPOSITORY}/actions/workflows/asels-live-loop.yml/runs?per_page=30" |
+              jq '[.workflow_runs[] | select(.status == "queued" or .status == "in_progress" or .status == "waiting" or .status == "requested")] | length'
+          )"
+
+          echo "Aktif/queued ASELS Live Loop sayısı: ${active_count}"
+
+          if [ "${active_count}" -gt 0 ]; then
+            echo "ASELS Live Loop zaten çalışıyor; işlem yok."
+            exit 0
+          fi
+
+          echo "ASELS Live Loop çalışmıyor; yeniden başlatılıyor."
+          gh workflow run asels-live-loop.yml --repo "${REPOSITORY}" --ref main
+          echo "Recovery dispatch başarılı."
