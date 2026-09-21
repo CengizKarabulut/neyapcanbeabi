@@ -2,14 +2,13 @@ name: ASELS Watchdog
 
 on:
   schedule:
-    # Açılış öncesi teorik komutların yedek kontrolü (Türkiye saati -> UTC)
+    # Açılış öncesi teorik komutlar için yedek kontroller (UTC)
     - cron: "43,48,53,57 6 * * 1-5"
     - cron: "2 7 * * 1-5"
-    # Gün içi ana turların yaklaşık 7 dakika sonrasında yedek kontrol
-    - cron: "12,27,42,57 7-14 * * 1-5"
-    - cron: "12,22 15 * * 1-5"
-    # 19:30 takas için yedek kontrol
-    - cron: "37 16 * * 1-5"
+    # Türkiye saati 10:00-18:55 arasında her 5 dakikada bir watchdog heartbeat
+    - cron: "*/5 7-15 * * 1-5"
+    # 19:30 takas için 19:35 yedek kontrolü
+    - cron: "35 16 * * 1-5"
   workflow_dispatch:
 
 permissions:
@@ -29,6 +28,8 @@ jobs:
         shell: bash
         run: |
           now="$(TZ=Europe/Istanbul date +%H%M)"
+          hour="$(TZ=Europe/Istanbul date +%H)"
+          minute="$(TZ=Europe/Istanbul date +%M)"
           dow="$(TZ=Europe/Istanbul date +%u)"
 
           echo "run=false" >> "$GITHUB_OUTPUT"
@@ -38,23 +39,35 @@ jobs:
             exit 0
           fi
 
+          # Pre-open backups: 09:43, 09:48, 09:53, 09:57, 10:02 civarı.
           if [ "${now}" -ge 0942 ] && [ "${now}" -le 1004 ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "commands=teorik" >> "$GITHUB_OUTPUT"
             echo "dedupe=4" >> "$GITHUB_OUTPUT"
             echo "mode=preopen" >> "$GITHUB_OUTPUT"
-          elif [ "${now}" -ge 1010 ] && [ "${now}" -le 1825 ]; then
+
+          # Intraday backups: ana 10:05/20/35/50 turlarının 5 dk sonrası 10/25/40/55.
+          elif [ "${hour}" -ge 10 ] && [ "${hour}" -le 17 ] && [[ "${minute}" =~ ^(10|25|40|55)$ ]]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "commands=akd,derinlik,kurum" >> "$GITHUB_OUTPUT"
-            echo "dedupe=12" >> "$GITHUB_OUTPUT"
+            echo "dedupe=10" >> "$GITHUB_OUTPUT"
             echo "mode=intraday" >> "$GITHUB_OUTPUT"
-          elif [ "${now}" -ge 1935 ] && [ "${now}" -le 1945 ]; then
+
+          # 18:05 ve 18:15 ana turları için 18:10 ve 18:20 yedekleri.
+          elif [ "${hour}" = "18" ] && [[ "${minute}" =~ ^(10|20)$ ]]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "commands=akd,derinlik,kurum" >> "$GITHUB_OUTPUT"
+            echo "dedupe=10" >> "$GITHUB_OUTPUT"
+            echo "mode=intraday" >> "$GITHUB_OUTPUT"
+
+          # 19:30 takas için 19:35 yedeği.
+          elif [ "${hour}" = "19" ] && [ "${minute}" = "35" ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "commands=takas" >> "$GITHUB_OUTPUT"
-            echo "dedupe=15" >> "$GITHUB_OUTPUT"
+            echo "dedupe=10" >> "$GITHUB_OUTPUT"
             echo "mode=eod" >> "$GITHUB_OUTPUT"
           else
-            echo "Bu saat watchdog penceresinde değil: ${now}"
+            echo "Watchdog heartbeat; gönderim gerekmiyor: ${now}"
           fi
 
       - uses: actions/checkout@v4
