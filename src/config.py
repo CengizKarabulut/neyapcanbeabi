@@ -33,14 +33,14 @@ class Settings:
     def from_env(cls) -> "Settings":
         commands = tuple(
             part.strip().lstrip("/")
-            for part in os.getenv("COMMANDS", "akd,derinlik").split(",")
+            for part in os.getenv("COMMANDS", "akd,derinlik,kurum").split(",")
             if part.strip()
         )
         if not commands:
             raise RuntimeError("COMMANDS en az bir komut içermeli.")
 
-        symbol = os.getenv("SYMBOL", "ZGYO").strip().upper()
-        delay = float(os.getenv("COMMAND_DELAY_SECONDS", "5"))
+        symbol = os.getenv("SYMBOL", "ASELS").strip().upper()
+        delay = float(os.getenv("COMMAND_DELAY_SECONDS", "10"))
 
         return cls(
             api_id=int(_required("TELEGRAM_API_ID")),
