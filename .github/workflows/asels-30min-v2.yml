@@ -1,6 +1,13 @@
 name: ASELS 30 Minute Commands
 
 on:
+  schedule:
+    # Pazartesi-Cuma, Türkiye saati 10:05-17:35 arası :05/:35
+    - cron: "5,35 10-17 * * 1-5"
+      timezone: "Europe/Istanbul"
+    # Gün içi son tur: 18:05
+    - cron: "5 18 * * 1-5"
+      timezone: "Europe/Istanbul"
   workflow_dispatch:
 
 permissions:
@@ -12,7 +19,6 @@ concurrency:
 
 jobs:
   send:
-    if: ${{ false }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
