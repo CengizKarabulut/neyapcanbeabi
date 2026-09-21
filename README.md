@@ -2,9 +2,22 @@
 
 Bu repo yalnızca **ASELS** için Telegram komut otomasyonu çalıştırır.
 
+## Çalışma mimarisi
+
+Üretimde yalnızca iki GitHub Actions workflow'u vardır:
+
+- `ASELS Live Loop`
+- `ASELS Loop Recovery`
+
+Ana gönderimler GitHub `schedule` cronuna bağlı değildir. `ASELS Live Loop`, kendi Python zamanlayıcısı (`scripts/asels_scheduler.py`) içinde Türkiye saatini takip eder.
+
+`ASELS Loop Recovery` ise Live Loop kapanır, hata verir, takılır veya eski çalışma koduyla açık kalırsa bunu tespit eder ve güncel Live Loop'u yeniden başlatır. Cron burada yalnız üçüncü/yedek güvenlik katmanıdır.
+
+Live Loop yaklaşık 4 saatlik bloklar halinde çalışır. Blok normal veya hatalı şekilde bittiğinde `workflow_run` üzerinden Recovery devreye girer ve sonraki sağlıklı bloğu başlatır.
+
 ## Açılış öncesi teorik fiyat komutu
 
-Pazartesi-Cuma, Türkiye saatiyle aşağıdaki saatlerde:
+Pazartesi-Cuma, Türkiye saatiyle:
 
 ```text
 09:40
@@ -22,7 +35,7 @@ Pazartesi-Cuma, Türkiye saatiyle aşağıdaki saatlerde:
 
 ## Gün içi komutlar
 
-Pazartesi-Cuma, Türkiye saatiyle **10:05'ten başlayarak 15 dakikada bir** 17:50'ye kadar ve ardından **18:05 ile 18:15'te**:
+Pazartesi-Cuma, Türkiye saatiyle **10:05'ten başlayarak 15 dakikada bir** 17:50'ye kadar ve ayrıca **18:05 ile 18:15'te**:
 
 ```text
 /akd ASELS
@@ -32,6 +45,8 @@ Pazartesi-Cuma, Türkiye saatiyle **10:05'ten başlayarak 15 dakikada bir** 17:5
 
 Komutlar arasında 10 saniye beklenir.
 
+Python scheduler planlanan dakikayı birkaç saniye veya birkaç dakika kaçırsa bile 4 dakikalık catch-up penceresinde turu tamamlamaya çalışır. Telegram gönderiminde hata alınırsa otomatik tekrar deneme yapılır.
+
 ## Gün sonu takas
 
 Pazartesi-Cuma, Türkiye saatiyle **19:30'da yalnızca**:
@@ -40,11 +55,9 @@ Pazartesi-Cuma, Türkiye saatiyle **19:30'da yalnızca**:
 /takas ASELS
 ```
 
-## Watchdog
+## Çift gönderim koruması
 
-`ASELS Watchdog`, gün içinde 5 dakikalık heartbeat ile scheduler ve Telegram akışını yedekler. Ana intraday turundan yaklaşık 5 dakika sonra ilgili komutların Telegram geçmişinde bulunup bulunmadığını kontrol eder. Son gönderim yakın zamanda yapılmışsa tekrar göndermez; eksikse `/akd ASELS`, `/derinlik ASELS` ve `/kurum ASELS` komutlarını tamamlar. Açılış öncesi `/teorik ASELS` ve 19:30 `/takas ASELS` için de ayrı yedek kontrol vardır.
-
-Workflow cronları doğrudan **UTC** olarak tanımlıdır. Türkiye saati kod içinde `Europe/Istanbul` ile kontrol edilir.
+`src/main.py`, aynı komut yakın zamanda gönderilmişse Telegram geçmişini kontrol ederek tekrarı engeller. Böylece Recovery veya deployment sırasında kısa süreli yeniden başlama olsa bile aynı komutun gereksiz yere yinelenmesi azaltılır.
 
 ## Telegram hedefi
 
@@ -56,7 +69,7 @@ ASELS komutları şu Telegram grubuna gönderilir:
 
 ## Gerekli GitHub Secrets
 
-Repo > Settings > Secrets and variables > Actions bölümünde aşağıdaki secret'lar bulunmalıdır:
+Repo > Settings > Secrets and variables > Actions bölümünde:
 
 ```text
 TELEGRAM_API_ID
@@ -64,7 +77,9 @@ TELEGRAM_API_HASH
 TELEGRAM_SESSION
 ```
 
-`TELEGRAM_CHAT_ID` secret'ı bu ASELS-only sürümünde kullanılmaz; hedef workflow içinde `@aselsanhissee` olarak tanımlıdır.
+bulunmalıdır.
+
+`TELEGRAM_CHAT_ID` kullanılmaz; ASELS hedefi uygulamada `@aselsanhissee` olarak tanımlıdır.
 
 ## TELEGRAM_SESSION üretme
 
@@ -79,13 +94,21 @@ python scripts/generate_session.py
 
 Program API_ID ve API_HASH ister. Telegram hesabına giriş yaptıktan sonra oluşan uzun oturum değerini `TELEGRAM_SESSION` secret'ına kaydet.
 
-## Manuel test
+## Manuel kontrol
 
-GitHub > Actions bölümünde:
+GitHub > Actions bölümünde yalnız şu iki akışın görülmesi beklenir:
 
-- `ASELS Pre-Open Teorik` > `Run workflow`
-- `ASELS Intraday Commands` > `Run workflow`
-- `ASELS Watchdog` > `Run workflow`
-- `ASELS End of Day Takas` > `Run workflow`
+```text
+ASELS Live Loop
+ASELS Loop Recovery
+```
 
-Gün içi workflow'u 10:05-18:15 saat aralığı dışında komut göndermemek için ayrıca saat kontrolü yapar.
+Normal durumda `ASELS Live Loop` uzun süre `in_progress` görünür. Bu beklenen davranıştır; zamanlayıcı bu çalışan job içinde saatleri takip eder.
+
+Recovery logunda sağlıklı durumda şu tip kayıt görülür:
+
+```text
+Healthy ASELS loop: ... status=in_progress
+Healthy active/queued ASELS Live Loop count: 1
+ASELS Live Loop healthy; no dispatch needed.
+```
