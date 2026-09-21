@@ -2,9 +2,8 @@ name: ASELS Pre-Open Teorik
 
 on:
   schedule:
-    # Pazartesi-Cuma, Türkiye saati 09:40, 09:45, 09:50, 09:55 ve 09:58
-    - cron: "40,45,50,55,58 9 * * 1-5"
-      timezone: "Europe/Istanbul"
+    # Türkiye saati 09:40, 09:45, 09:50, 09:55 ve 09:58 (UTC+3 -> 06:40, 06:45, 06:50, 06:55, 06:58 UTC)
+    - cron: "40,45,50,55,58 6 * * 1-5"
   workflow_dispatch:
 
 permissions:
