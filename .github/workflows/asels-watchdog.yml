@@ -2,19 +2,14 @@ name: ASELS Watchdog
 
 on:
   schedule:
-    # Açılış öncesi teorik komutların yedek kontrolü
-    - cron: "43,48,53,57 9 * * 1-5"
-      timezone: "Europe/Istanbul"
-    - cron: "2 10 * * 1-5"
-      timezone: "Europe/Istanbul"
+    # Açılış öncesi teorik komutların yedek kontrolü (Türkiye saati -> UTC)
+    - cron: "43,48,53,57 6 * * 1-5"
+    - cron: "2 7 * * 1-5"
     # Gün içi ana turların yaklaşık 7 dakika sonrasında yedek kontrol
-    - cron: "12,27,42,57 10-17 * * 1-5"
-      timezone: "Europe/Istanbul"
-    - cron: "12,22 18 * * 1-5"
-      timezone: "Europe/Istanbul"
+    - cron: "12,27,42,57 7-14 * * 1-5"
+    - cron: "12,22 15 * * 1-5"
     # 19:30 takas için yedek kontrol
-    - cron: "37 19 * * 1-5"
-      timezone: "Europe/Istanbul"
+    - cron: "37 16 * * 1-5"
   workflow_dispatch:
 
 permissions:
