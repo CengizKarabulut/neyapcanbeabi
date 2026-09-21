@@ -40,6 +40,12 @@ Pazartesi-Cuma, Türkiye saatiyle **19:30'da yalnızca**:
 /takas ASELS
 ```
 
+## Watchdog
+
+`ASELS Watchdog`, gün içinde 5 dakikalık heartbeat ile scheduler ve Telegram akışını yedekler. Ana intraday turundan yaklaşık 5 dakika sonra ilgili komutların Telegram geçmişinde bulunup bulunmadığını kontrol eder. Son gönderim yakın zamanda yapılmışsa tekrar göndermez; eksikse `/akd ASELS`, `/derinlik ASELS` ve `/kurum ASELS` komutlarını tamamlar. Açılış öncesi `/teorik ASELS` ve 19:30 `/takas ASELS` için de ayrı yedek kontrol vardır.
+
+Workflow cronları doğrudan **UTC** olarak tanımlıdır. Türkiye saati kod içinde `Europe/Istanbul` ile kontrol edilir.
+
 ## Telegram hedefi
 
 ASELS komutları şu Telegram grubuna gönderilir:
@@ -79,6 +85,7 @@ GitHub > Actions bölümünde:
 
 - `ASELS Pre-Open Teorik` > `Run workflow`
 - `ASELS Intraday Commands` > `Run workflow`
+- `ASELS Watchdog` > `Run workflow`
 - `ASELS End of Day Takas` > `Run workflow`
 
 Gün içi workflow'u 10:05-18:15 saat aralığı dışında komut göndermemek için ayrıca saat kontrolü yapar.
