@@ -1,4 +1,4 @@
-name: ASELS Workflow Re-enable Bootstrap
+name: ASELS Workflow Scheduler Hard Reset
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       REPOSITORY: ${{ github.repository }}
     steps:
-      - name: Show ASELS workflow states before repair
+      - name: Show ASELS workflow states before reset
         shell: bash
         run: |
           set -euo pipefail
@@ -26,10 +26,25 @@ jobs:
           gh api "repos/${REPOSITORY}/actions/workflows?per_page=100" \
             --jq '.workflows[] | select(.path | contains("asels")) | [.name,.path,.state,.id] | @tsv'
 
-      - name: Explicitly enable ASELS workflows
+      - name: Disable ASELS delivery workflows
         shell: bash
         run: |
           set -euo pipefail
+          for workflow in \
+            asels-30min-v2.yml \
+            asels-preopen-teorik.yml \
+            asels-eod-takas.yml \
+            asels-watchdog.yml
+          do
+            echo "Disabling ${workflow}"
+            gh api -X PUT "repos/${REPOSITORY}/actions/workflows/${workflow}/disable"
+          done
+
+      - name: Re-enable ASELS delivery workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          sleep 2
           for workflow in \
             asels-30min-v2.yml \
             asels-preopen-teorik.yml \
@@ -40,7 +55,7 @@ jobs:
             gh api -X PUT "repos/${REPOSITORY}/actions/workflows/${workflow}/enable"
           done
 
-      - name: Show ASELS workflow states after repair
+      - name: Verify active states after reset
         shell: bash
         run: |
           set -euo pipefail
@@ -48,10 +63,10 @@ jobs:
           gh api "repos/${REPOSITORY}/actions/workflows?per_page=100" \
             --jq '.workflows[] | select(.path | contains("asels")) | [.name,.path,.state,.id] | @tsv'
 
-      - name: Dispatch intraday workflow live test
+      - name: Dispatch watchdog registration probe
         shell: bash
         run: |
           set -euo pipefail
-          gh api -X POST "repos/${REPOSITORY}/actions/workflows/asels-30min-v2.yml/dispatches" \
+          gh api -X POST "repos/${REPOSITORY}/actions/workflows/asels-watchdog.yml/dispatches" \
             -f ref=main
-          echo "Intraday workflow_dispatch requested."
+          echo "Watchdog workflow_dispatch requested after hard reset."
