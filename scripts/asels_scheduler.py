@@ -11,9 +11,10 @@ from zoneinfo import ZoneInfo
 ISTANBUL = ZoneInfo("Europe/Istanbul")
 CHAT_ID = "@aselsanhissee"
 SYMBOL = "ASELS"
-CATCHUP_SECONDS = 4 * 60
+CATCHUP_SECONDS = 6 * 60
 CHECK_INTERVAL_SECONDS = 5
 HEARTBEAT_SECONDS = 5 * 60
+SENDER_TIMEOUT_SECONDS = int(os.getenv("ASELS_SENDER_TIMEOUT_SECONDS", "100"))
 MAX_RUNTIME_MINUTES = int(os.getenv("ASELS_LOOP_RUNTIME_MINUTES", "240"))
 HANDOFF_LEAD_SECONDS = int(os.getenv("ASELS_HANDOFF_LEAD_SECONDS", "300"))
 WORKFLOW_FILE = "asels-live-loop.yml"
@@ -65,21 +66,37 @@ def run_sender(slot: Slot) -> bool:
         stamp = datetime.now(ISTANBUL).strftime("%F %T %Z")
         print(
             f"[{stamp}] SEND slot={slot.hhmm} label={slot.label} "
-            f"commands={slot.commands} attempt={attempt}/3",
+            f"commands={slot.commands} attempt={attempt}/3 timeout={SENDER_TIMEOUT_SECONDS}s",
             flush=True,
         )
-        result = subprocess.run([sys.executable, "-m", "src.main"], env=env, check=False)
-        if result.returncode == 0:
+
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "src.main"],
+                env=env,
+                check=False,
+                timeout=SENDER_TIMEOUT_SECONDS,
+            )
+            returncode = result.returncode
+        except subprocess.TimeoutExpired:
+            returncode = 124
+            print(
+                f"[{datetime.now(ISTANBUL):%F %T}] SEND TIMEOUT slot={slot.hhmm}; "
+                "sender process was terminated so the clock loop can continue.",
+                flush=True,
+            )
+
+        if returncode == 0:
             print(f"[{datetime.now(ISTANBUL):%F %T}] SEND OK slot={slot.hhmm}", flush=True)
             return True
 
         print(
             f"[{datetime.now(ISTANBUL):%F %T}] SEND FAILED slot={slot.hhmm} "
-            f"returncode={result.returncode}",
+            f"returncode={returncode}",
             flush=True,
         )
         if attempt < 3:
-            time.sleep(15)
+            time.sleep(10)
 
     return False
 
@@ -98,22 +115,33 @@ def dispatch_successor() -> bool:
     for attempt in range(1, 4):
         stamp = datetime.now(ISTANBUL).strftime("%F %T %Z")
         print(f"[{stamp}] SELF-HANDOFF attempt={attempt}/3", flush=True)
-        result = subprocess.run(
-            [
-                "gh",
-                "workflow",
-                "run",
-                WORKFLOW_FILE,
-                "--repo",
-                repository,
-                "--ref",
-                "main",
-            ],
-            env=env,
-            check=False,
-            capture_output=True,
-            text=True,
-        )
+        try:
+            result = subprocess.run(
+                [
+                    "gh",
+                    "workflow",
+                    "run",
+                    WORKFLOW_FILE,
+                    "--repo",
+                    repository,
+                    "--ref",
+                    "main",
+                ],
+                env=env,
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            print(
+                f"[{datetime.now(ISTANBUL):%F %T}] SELF-HANDOFF TIMEOUT",
+                flush=True,
+            )
+            if attempt < 3:
+                time.sleep(10)
+            continue
+
         if result.returncode == 0:
             print(
                 f"[{datetime.now(ISTANBUL):%F %T}] SELF-HANDOFF OK; successor queued.",
@@ -152,7 +180,7 @@ def main() -> int:
     print(
         f"ASELS resilient scheduler started={started:%F %T %Z} "
         f"stop_at={stop_at:%F %T %Z} handoff_at={handoff_at:%F %T %Z} "
-        f"catchup={CATCHUP_SECONDS}s",
+        f"catchup={CATCHUP_SECONDS}s sender_timeout={SENDER_TIMEOUT_SECONDS}s",
         flush=True,
     )
 
@@ -167,9 +195,8 @@ def main() -> int:
             )
             next_heartbeat = now + timedelta(seconds=HEARTBEAT_SECONDS)
 
-        # Queue the next runner before this runner exits. Because the workflow
-        # concurrency group uses cancel-in-progress:false, the successor waits
-        # safely until this run finishes instead of cancelling it.
+        # Queue the next runner before this runner exits. The workflow concurrency
+        # policy leaves the healthy current run alive while the successor waits.
         if not handoff_done and now >= next_handoff_retry:
             if dispatch_successor():
                 handoff_done = True
