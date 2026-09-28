@@ -13,6 +13,10 @@ from telethon.sessions import StringSession
 from src.config import Settings
 
 ISTANBUL = ZoneInfo("Europe/Istanbul")
+CONNECT_TIMEOUT_SECONDS = int(os.getenv("TELEGRAM_CONNECT_TIMEOUT_SECONDS", "20"))
+REQUEST_TIMEOUT_SECONDS = int(os.getenv("TELEGRAM_REQUEST_TIMEOUT_SECONDS", "20"))
+DEDUP_TIMEOUT_SECONDS = int(os.getenv("TELEGRAM_DEDUP_TIMEOUT_SECONDS", "20"))
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 logger = logging.getLogger("telegram-market-commands")
 
@@ -47,9 +51,7 @@ async def resolve_target(client: TelegramClient, chat_target: int | str):
         return await client.get_entity(fallback)
 
 
-async def recently_sent(client: TelegramClient, target, text: str, minutes: int) -> bool:
-    if minutes <= 0:
-        return False
+async def _recently_sent_impl(client: TelegramClient, target, text: str, minutes: int) -> bool:
     cutoff = datetime.now(timezone.utc) - timedelta(minutes=minutes)
     async for msg in client.iter_messages(target, limit=100):
         if msg.date and msg.date < cutoff:
@@ -59,18 +61,46 @@ async def recently_sent(client: TelegramClient, target, text: str, minutes: int)
     return False
 
 
+async def recently_sent(client: TelegramClient, target, text: str, minutes: int) -> bool:
+    if minutes <= 0:
+        return False
+    return await asyncio.wait_for(
+        _recently_sent_impl(client, target, text, minutes),
+        timeout=DEDUP_TIMEOUT_SECONDS,
+    )
+
+
 async def main() -> None:
     settings = Settings.from_env()
     messages = [f"/{command} {settings.symbol}" for command in settings.commands]
     dedupe_minutes = int(os.getenv("DEDUPE_WINDOW_MINUTES", "0") or "0")
 
-    client = TelegramClient(StringSession(settings.session), settings.api_id, settings.api_hash)
+    client = TelegramClient(
+        StringSession(settings.session),
+        settings.api_id,
+        settings.api_hash,
+        timeout=10,
+        request_retries=2,
+        connection_retries=2,
+        retry_delay=1,
+        auto_reconnect=False,
+    )
+
     try:
-        await client.connect()
-        if not await client.is_user_authorized():
+        logger.info("[%s] Telegram bağlantısı başlatılıyor.", now_istanbul())
+        await asyncio.wait_for(client.connect(), timeout=CONNECT_TIMEOUT_SECONDS)
+
+        authorized = await asyncio.wait_for(
+            client.is_user_authorized(),
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        if not authorized:
             raise RuntimeError("TELEGRAM_SESSION geçerli değil veya yetkilendirilmemiş.")
 
-        target = await resolve_target(client, settings.chat_target)
+        target = await asyncio.wait_for(
+            resolve_target(client, settings.chat_target),
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
         logger.info(
             "[%s] Hedef hazır: %s (Telegram entity id=%s)",
             now_istanbul(),
@@ -79,7 +109,17 @@ async def main() -> None:
         )
 
         for i, message in enumerate(messages):
-            if await recently_sent(client, target, message, dedupe_minutes):
+            try:
+                duplicate = await recently_sent(client, target, message, dedupe_minutes)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "[%s] Dedupe kontrolü zaman aşımına uğradı; gönderime devam ediliyor: %s",
+                    now_istanbul(),
+                    message,
+                )
+                duplicate = False
+
+            if duplicate:
                 logger.info(
                     "[%s] Tekrar engellendi (%s dk pencere): %s",
                     now_istanbul(),
@@ -88,13 +128,24 @@ async def main() -> None:
                 )
                 continue
 
-            await client.send_message(target, message)
+            await asyncio.wait_for(
+                client.send_message(target, message),
+                timeout=REQUEST_TIMEOUT_SECONDS,
+            )
             logger.info("[%s] Gönderildi: %s", now_istanbul(), message)
+
             if i < len(messages) - 1 and settings.command_delay_seconds > 0:
                 await asyncio.sleep(settings.command_delay_seconds)
     finally:
-        await client.disconnect()
+        if client.is_connected():
+            try:
+                await asyncio.wait_for(client.disconnect(), timeout=5)
+            except Exception:
+                logger.warning("Telegram bağlantısı kapatılırken hata/zaman aşımı oluştu.")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(asyncio.wait_for(main(), timeout=90))
+    except asyncio.TimeoutError as exc:
+        raise SystemExit("Telegram gönderim işlemi 90 saniyede tamamlanamadı.") from exc
