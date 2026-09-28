@@ -1,1 +1,1 @@
-Telethon==1.43.0
+# No third-party runtime dependencies. Telegram uses the HTTPS Bot API.

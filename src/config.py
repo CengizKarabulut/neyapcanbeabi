@@ -11,20 +11,10 @@ def _required(name: str) -> str:
     return value
 
 
-def parse_chat_target(value: str) -> int | str:
-    value = value.strip()
-    try:
-        return int(value)
-    except ValueError:
-        return value
-
-
 @dataclass(frozen=True)
 class Settings:
-    api_id: int
-    api_hash: str
-    session: str
-    chat_target: int | str
+    bot_token: str
+    chat_target: str
     symbol: str
     commands: tuple[str, ...]
     command_delay_seconds: float
@@ -41,12 +31,13 @@ class Settings:
 
         symbol = os.getenv("SYMBOL", "ASELS").strip().upper()
         delay = float(os.getenv("COMMAND_DELAY_SECONDS", "10"))
+        chat_target = os.getenv("TELEGRAM_CHAT_ID", "@aselsanhissee").strip()
+        if not chat_target:
+            raise RuntimeError("TELEGRAM_CHAT_ID boş olamaz.")
 
         return cls(
-            api_id=int(_required("TELEGRAM_API_ID")),
-            api_hash=_required("TELEGRAM_API_HASH"),
-            session=_required("TELEGRAM_SESSION"),
-            chat_target=parse_chat_target(_required("TELEGRAM_CHAT_ID")),
+            bot_token=_required("TELEGRAM_BOT_TOKEN"),
+            chat_target=chat_target,
             symbol=symbol,
             commands=commands,
             command_delay_seconds=delay,

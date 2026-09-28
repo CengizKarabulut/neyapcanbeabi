@@ -16,7 +16,7 @@ CHECK_INTERVAL_SECONDS = 5
 HEARTBEAT_SECONDS = 5 * 60
 SENDER_TIMEOUT_SECONDS = int(os.getenv("ASELS_SENDER_TIMEOUT_SECONDS", "100"))
 MAX_RUNTIME_MINUTES = int(os.getenv("ASELS_LOOP_RUNTIME_MINUTES", "240"))
-HANDOFF_LEAD_SECONDS = int(os.getenv("ASELS_HANDOFF_LEAD_SECONDS", "300"))
+HANDOFF_LEAD_SECONDS = int(os.getenv("ASELS_HANDOFF_LEAD_SECONDS", "60"))
 WORKFLOW_FILE = "asels-live-loop.yml"
 
 
@@ -24,7 +24,6 @@ WORKFLOW_FILE = "asels-live-loop.yml"
 class Slot:
     hhmm: str
     commands: str
-    dedupe_minutes: int
     label: str
 
 
@@ -32,16 +31,16 @@ def daily_slots() -> list[Slot]:
     slots: list[Slot] = []
 
     for hhmm in ("09:40", "09:45", "09:50", "09:55", "09:58"):
-        slots.append(Slot(hhmm, "teorik", 4, "preopen"))
+        slots.append(Slot(hhmm, "teorik", "preopen"))
 
     for hour in range(10, 18):
         for minute in (5, 20, 35, 50):
-            slots.append(Slot(f"{hour:02d}:{minute:02d}", "akd,derinlik,kurum", 14, "intraday"))
+            slots.append(Slot(f"{hour:02d}:{minute:02d}", "akd,derinlik,kurum", "intraday"))
 
     for hhmm in ("18:05", "18:15"):
-        slots.append(Slot(hhmm, "akd,derinlik,kurum", 14, "intraday"))
+        slots.append(Slot(hhmm, "akd,derinlik,kurum", "intraday"))
 
-    slots.append(Slot("19:30", "takas", 60, "eod"))
+    slots.append(Slot("19:30", "takas", "eod"))
     return slots
 
 
@@ -50,15 +49,14 @@ def slot_datetime(now: datetime, hhmm: str) -> datetime:
     return now.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
-def run_sender(slot: Slot) -> bool:
+def run_one_command(command: str, slot: Slot) -> bool:
     env = os.environ.copy()
     env.update(
         {
             "TELEGRAM_CHAT_ID": CHAT_ID,
             "SYMBOL": SYMBOL,
-            "COMMANDS": slot.commands,
-            "COMMAND_DELAY_SECONDS": "10",
-            "DEDUPE_WINDOW_MINUTES": str(slot.dedupe_minutes),
+            "COMMANDS": command,
+            "COMMAND_DELAY_SECONDS": "0",
         }
     )
 
@@ -66,7 +64,7 @@ def run_sender(slot: Slot) -> bool:
         stamp = datetime.now(ISTANBUL).strftime("%F %T %Z")
         print(
             f"[{stamp}] SEND slot={slot.hhmm} label={slot.label} "
-            f"commands={slot.commands} attempt={attempt}/3 timeout={SENDER_TIMEOUT_SECONDS}s",
+            f"command={command} attempt={attempt}/3 timeout={SENDER_TIMEOUT_SECONDS}s",
             flush=True,
         )
 
@@ -81,24 +79,40 @@ def run_sender(slot: Slot) -> bool:
         except subprocess.TimeoutExpired:
             returncode = 124
             print(
-                f"[{datetime.now(ISTANBUL):%F %T}] SEND TIMEOUT slot={slot.hhmm}; "
-                "sender process was terminated so the clock loop can continue.",
+                f"[{datetime.now(ISTANBUL):%F %T}] SEND TIMEOUT slot={slot.hhmm} "
+                f"command={command}; sender process was terminated.",
                 flush=True,
             )
 
         if returncode == 0:
-            print(f"[{datetime.now(ISTANBUL):%F %T}] SEND OK slot={slot.hhmm}", flush=True)
+            print(
+                f"[{datetime.now(ISTANBUL):%F %T}] SEND OK "
+                f"slot={slot.hhmm} command={command}",
+                flush=True,
+            )
             return True
 
         print(
             f"[{datetime.now(ISTANBUL):%F %T}] SEND FAILED slot={slot.hhmm} "
-            f"returncode={returncode}",
+            f"command={command} returncode={returncode}",
             flush=True,
         )
         if attempt < 3:
             time.sleep(10)
 
     return False
+
+
+def run_sender(slot: Slot) -> bool:
+    commands = [part.strip() for part in slot.commands.split(",") if part.strip()]
+
+    for index, command in enumerate(commands):
+        if not run_one_command(command, slot):
+            return False
+        if index < len(commands) - 1:
+            time.sleep(10)
+
+    return True
 
 
 def dispatch_successor() -> bool:
@@ -162,10 +176,8 @@ def dispatch_successor() -> bool:
 
 
 def main() -> int:
-    required = ("TELEGRAM_API_ID", "TELEGRAM_API_HASH", "TELEGRAM_SESSION")
-    missing = [name for name in required if not os.getenv(name, "").strip()]
-    if missing:
-        raise RuntimeError(f"Eksik secret: {', '.join(missing)}")
+    if not os.getenv("TELEGRAM_BOT_TOKEN", "").strip():
+        raise RuntimeError("Eksik secret: TELEGRAM_BOT_TOKEN")
 
     slots = daily_slots()
     sent_keys: set[str] = set()
@@ -195,8 +207,6 @@ def main() -> int:
             )
             next_heartbeat = now + timedelta(seconds=HEARTBEAT_SECONDS)
 
-        # Queue the next runner before this runner exits. The workflow concurrency
-        # policy leaves the healthy current run alive while the successor waits.
         if not handoff_done and now >= next_handoff_retry:
             if dispatch_successor():
                 handoff_done = True
