@@ -64,11 +64,19 @@ def telegram_api(token: str, method: str, payload: dict[str, str]) -> dict:
 
 def main() -> None:
     settings = Settings.from_env()
-    messages = [f"/{command} {settings.symbol}" for command in settings.commands]
+    messages = [
+        f"/{command}@{settings.target_bot_username} {settings.symbol}"
+        for command in settings.commands
+    ]
 
     me = telegram_api(settings.bot_token, "getMe", {})
     bot_username = me.get("username", "?")
     logger.info("[%s] Bot hazır: @%s", now_istanbul(), bot_username)
+    logger.info(
+        "[%s] Komut hedefi: @%s",
+        now_istanbul(),
+        settings.target_bot_username,
+    )
 
     chat = telegram_api(
         settings.bot_token,
