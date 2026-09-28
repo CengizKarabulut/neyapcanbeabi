@@ -15,6 +15,8 @@ CATCHUP_SECONDS = 4 * 60
 CHECK_INTERVAL_SECONDS = 5
 HEARTBEAT_SECONDS = 5 * 60
 MAX_RUNTIME_MINUTES = int(os.getenv("ASELS_LOOP_RUNTIME_MINUTES", "240"))
+HANDOFF_LEAD_SECONDS = int(os.getenv("ASELS_HANDOFF_LEAD_SECONDS", "300"))
+WORKFLOW_FILE = "asels-live-loop.yml"
 
 
 @dataclass(frozen=True)
@@ -82,6 +84,55 @@ def run_sender(slot: Slot) -> bool:
     return False
 
 
+def dispatch_successor() -> bool:
+    repository = os.getenv("GITHUB_REPOSITORY", "").strip()
+    token = os.getenv("GH_TOKEN", "").strip()
+    if not repository or not token:
+        print(
+            "SELF-HANDOFF FAILED: GITHUB_REPOSITORY or GH_TOKEN is missing.",
+            flush=True,
+        )
+        return False
+
+    env = os.environ.copy()
+    for attempt in range(1, 4):
+        stamp = datetime.now(ISTANBUL).strftime("%F %T %Z")
+        print(f"[{stamp}] SELF-HANDOFF attempt={attempt}/3", flush=True)
+        result = subprocess.run(
+            [
+                "gh",
+                "workflow",
+                "run",
+                WORKFLOW_FILE,
+                "--repo",
+                repository,
+                "--ref",
+                "main",
+            ],
+            env=env,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0:
+            print(
+                f"[{datetime.now(ISTANBUL):%F %T}] SELF-HANDOFF OK; successor queued.",
+                flush=True,
+            )
+            return True
+
+        detail = (result.stderr or result.stdout or "").strip()
+        print(
+            f"[{datetime.now(ISTANBUL):%F %T}] SELF-HANDOFF FAILED "
+            f"returncode={result.returncode} detail={detail}",
+            flush=True,
+        )
+        if attempt < 3:
+            time.sleep(10)
+
+    return False
+
+
 def main() -> int:
     required = ("TELEGRAM_API_ID", "TELEGRAM_API_HASH", "TELEGRAM_SESSION")
     missing = [name for name in required if not os.getenv(name, "").strip()]
@@ -93,11 +144,15 @@ def main() -> int:
     failed_retry_after: dict[str, datetime] = {}
     started = datetime.now(ISTANBUL)
     stop_at = started + timedelta(minutes=MAX_RUNTIME_MINUTES)
+    handoff_at = stop_at - timedelta(seconds=HANDOFF_LEAD_SECONDS)
     next_heartbeat = started
+    next_handoff_retry = handoff_at
+    handoff_done = False
 
     print(
         f"ASELS resilient scheduler started={started:%F %T %Z} "
-        f"stop_at={stop_at:%F %T %Z} catchup={CATCHUP_SECONDS}s",
+        f"stop_at={stop_at:%F %T %Z} handoff_at={handoff_at:%F %T %Z} "
+        f"catchup={CATCHUP_SECONDS}s",
         flush=True,
     )
 
@@ -107,10 +162,19 @@ def main() -> int:
         if now >= next_heartbeat:
             print(
                 f"[{now:%F %T %Z}] HEARTBEAT weekday={now.isoweekday()} "
-                f"sent_slots={len(sent_keys)}",
+                f"sent_slots={len(sent_keys)} handoff_done={handoff_done}",
                 flush=True,
             )
             next_heartbeat = now + timedelta(seconds=HEARTBEAT_SECONDS)
+
+        # Queue the next runner before this runner exits. Because the workflow
+        # concurrency group uses cancel-in-progress:false, the successor waits
+        # safely until this run finishes instead of cancelling it.
+        if not handoff_done and now >= next_handoff_retry:
+            if dispatch_successor():
+                handoff_done = True
+            else:
+                next_handoff_retry = datetime.now(ISTANBUL) + timedelta(seconds=30)
 
         if now.isoweekday() <= 5:
             for slot in slots:
@@ -135,9 +199,24 @@ def main() -> int:
 
         time.sleep(CHECK_INTERVAL_SECONDS)
 
+    if not handoff_done:
+        print(
+            f"[{datetime.now(ISTANBUL):%F %T %Z}] Final self-handoff attempt before exit.",
+            flush=True,
+        )
+        handoff_done = dispatch_successor()
+
+    if not handoff_done:
+        print(
+            f"[{datetime.now(ISTANBUL):%F %T %Z}] ERROR: successor could not be queued. "
+            "Recovery schedule must repair the chain.",
+            flush=True,
+        )
+        return 2
+
     print(
-        f"[{datetime.now(ISTANBUL):%F %T %Z}] Runtime block completed normally. "
-        "Recovery workflow will start the successor.",
+        f"[{datetime.now(ISTANBUL):%F %T %Z}] Runtime block completed; "
+        "successor already queued.",
         flush=True,
     )
     return 0
