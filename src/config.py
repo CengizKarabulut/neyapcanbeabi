@@ -15,6 +15,7 @@ def _required(name: str) -> str:
 class Settings:
     bot_token: str
     chat_target: str
+    target_bot_username: str
     symbol: str
     commands: tuple[str, ...]
     command_delay_seconds: float
@@ -35,9 +36,17 @@ class Settings:
         if not chat_target:
             raise RuntimeError("TELEGRAM_CHAT_ID boş olamaz.")
 
+        target_bot_username = os.getenv(
+            "TELEGRAM_TARGET_BOT_USERNAME",
+            "ucretsizderinlikbot",
+        ).strip().lstrip("@")
+        if not target_bot_username:
+            raise RuntimeError("TELEGRAM_TARGET_BOT_USERNAME boş olamaz.")
+
         return cls(
             bot_token=_required("TELEGRAM_BOT_TOKEN"),
             chat_target=chat_target,
+            target_bot_username=target_bot_username,
             symbol=symbol,
             commands=commands,
             command_delay_seconds=delay,
