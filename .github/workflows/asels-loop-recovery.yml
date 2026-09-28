@@ -1,8 +1,10 @@
 name: ASELS Loop Recovery
 
 on:
+  # Fallback only. The Live Loop self-handoff is the primary continuity path.
+  # Stagger away from :00/:15/:30/:45 to reduce scheduler congestion risk.
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "7,22,37,52 * * * *"
   push:
     branches: [main]
     paths:
@@ -12,6 +14,8 @@ on:
       - "src/main.py"
       - "src/config.py"
       - "requirements.txt"
+  # Best-effort secondary recovery. Do not rely on this for the main chain;
+  # self-dispatched runs can suppress downstream token-generated events.
   workflow_run:
     workflows: ["ASELS Live Loop"]
     types: [completed]
