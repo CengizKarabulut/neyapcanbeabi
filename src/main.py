@@ -62,10 +62,17 @@ def telegram_api(token: str, method: str, payload: dict[str, str]) -> dict:
     return result
 
 
+def build_message(command: str, target_bot_username: str, symbol: str) -> str:
+    base = f"/{command}@{target_bot_username}"
+    if command.lower() == "kurum":
+        return base
+    return f"{base} {symbol}"
+
+
 def main() -> None:
     settings = Settings.from_env()
     messages = [
-        f"/{command}@{settings.target_bot_username} {settings.symbol}"
+        build_message(command, settings.target_bot_username, settings.symbol)
         for command in settings.commands
     ]
 
