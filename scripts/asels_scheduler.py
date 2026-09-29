@@ -24,6 +24,7 @@ WORKFLOW_FILE = "asels-live-loop.yml"
 class Slot:
     hhmm: str
     commands: str
+    dedupe_minutes: int
     label: str
 
 
@@ -31,16 +32,16 @@ def daily_slots() -> list[Slot]:
     slots: list[Slot] = []
 
     for hhmm in ("09:40", "09:45", "09:50", "09:55", "09:58"):
-        slots.append(Slot(hhmm, "teorik", "preopen"))
+        slots.append(Slot(hhmm, "teorik", 2, "preopen"))
 
     for hour in range(10, 18):
         for minute in (5, 20, 35, 50):
-            slots.append(Slot(f"{hour:02d}:{minute:02d}", "akd,derinlik,kurum", "intraday"))
+            slots.append(Slot(f"{hour:02d}:{minute:02d}", "akd,derinlik,kurum", 14, "intraday"))
 
     for hhmm in ("18:05", "18:15"):
-        slots.append(Slot(hhmm, "akd,derinlik,kurum", "intraday"))
+        slots.append(Slot(hhmm, "akd,derinlik,kurum", 9, "intraday"))
 
-    slots.append(Slot("19:30", "takas", "eod"))
+    slots.append(Slot("19:30", "takas", 60, "eod"))
     return slots
 
 
@@ -57,6 +58,7 @@ def run_one_command(command: str, slot: Slot) -> bool:
             "SYMBOL": SYMBOL,
             "COMMANDS": command,
             "COMMAND_DELAY_SECONDS": "0",
+            "DEDUPE_WINDOW_MINUTES": str(slot.dedupe_minutes),
         }
     )
 
@@ -176,8 +178,10 @@ def dispatch_successor() -> bool:
 
 
 def main() -> int:
-    if not os.getenv("TELEGRAM_BOT_TOKEN", "").strip():
-        raise RuntimeError("Eksik secret: TELEGRAM_BOT_TOKEN")
+    required = ("TELEGRAM_API_ID", "TELEGRAM_API_HASH", "TELEGRAM_SESSION")
+    missing = [name for name in required if not os.getenv(name, "").strip()]
+    if missing:
+        raise RuntimeError(f"Eksik secret: {', '.join(missing)}")
 
     slots = daily_slots()
     sent_keys: set[str] = set()
