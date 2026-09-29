@@ -4,6 +4,13 @@ import os
 from dataclasses import dataclass
 
 
+def _required(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        raise RuntimeError(f"Eksik ortam değişkeni: {name}")
+    return value
+
+
 def parse_chat_target(value: str) -> int | str:
     value = value.strip()
     try:
@@ -14,11 +21,9 @@ def parse_chat_target(value: str) -> int | str:
 
 @dataclass(frozen=True)
 class Settings:
-    bot_token: str | None
-    target_bot_username: str
-    api_id: int | None
-    api_hash: str | None
-    session: str | None
+    api_id: int
+    api_hash: str
+    session: str
     chat_target: int | str
     symbol: str
     commands: tuple[str, ...]
@@ -40,19 +45,10 @@ class Settings:
         if not chat_target_raw:
             raise RuntimeError("TELEGRAM_CHAT_ID boş olamaz.")
 
-        target_bot_username = os.getenv(
-            "TELEGRAM_TARGET_BOT_USERNAME",
-            "ucretsizderinlikbot",
-        ).strip().lstrip("@")
-
-        api_id_raw = os.getenv("TELEGRAM_API_ID", "").strip()
-
         return cls(
-            bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "").strip() or None,
-            target_bot_username=target_bot_username,
-            api_id=int(api_id_raw) if api_id_raw else None,
-            api_hash=os.getenv("TELEGRAM_API_HASH", "").strip() or None,
-            session=os.getenv("TELEGRAM_SESSION", "").strip() or None,
+            api_id=int(_required("TELEGRAM_API_ID")),
+            api_hash=_required("TELEGRAM_API_HASH"),
+            session=_required("TELEGRAM_SESSION"),
             chat_target=parse_chat_target(chat_target_raw),
             symbol=symbol,
             commands=commands,
