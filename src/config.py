@@ -4,18 +4,22 @@ import os
 from dataclasses import dataclass
 
 
-def _required(name: str) -> str:
-    value = os.getenv(name, "").strip()
-    if not value:
-        raise RuntimeError(f"Eksik ortam değişkeni: {name}")
-    return value
+def parse_chat_target(value: str) -> int | str:
+    value = value.strip()
+    try:
+        return int(value)
+    except ValueError:
+        return value
 
 
 @dataclass(frozen=True)
 class Settings:
-    bot_token: str
-    chat_target: str
+    bot_token: str | None
     target_bot_username: str
+    api_id: int | None
+    api_hash: str | None
+    session: str | None
+    chat_target: int | str
     symbol: str
     commands: tuple[str, ...]
     command_delay_seconds: float
@@ -32,21 +36,24 @@ class Settings:
 
         symbol = os.getenv("SYMBOL", "ASELS").strip().upper()
         delay = float(os.getenv("COMMAND_DELAY_SECONDS", "10"))
-        chat_target = os.getenv("TELEGRAM_CHAT_ID", "@aselsanhissee").strip()
-        if not chat_target:
+        chat_target_raw = os.getenv("TELEGRAM_CHAT_ID", "@aselsanhissee").strip()
+        if not chat_target_raw:
             raise RuntimeError("TELEGRAM_CHAT_ID boş olamaz.")
 
         target_bot_username = os.getenv(
             "TELEGRAM_TARGET_BOT_USERNAME",
             "ucretsizderinlikbot",
         ).strip().lstrip("@")
-        if not target_bot_username:
-            raise RuntimeError("TELEGRAM_TARGET_BOT_USERNAME boş olamaz.")
+
+        api_id_raw = os.getenv("TELEGRAM_API_ID", "").strip()
 
         return cls(
-            bot_token=_required("TELEGRAM_BOT_TOKEN"),
-            chat_target=chat_target,
+            bot_token=os.getenv("TELEGRAM_BOT_TOKEN", "").strip() or None,
             target_bot_username=target_bot_username,
+            api_id=int(api_id_raw) if api_id_raw else None,
+            api_hash=os.getenv("TELEGRAM_API_HASH", "").strip() or None,
+            session=os.getenv("TELEGRAM_SESSION", "").strip() or None,
+            chat_target=parse_chat_target(chat_target_raw),
             symbol=symbol,
             commands=commands,
             command_delay_seconds=delay,
