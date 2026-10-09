@@ -40,6 +40,7 @@ def daily_slots() -> list[Slot]:
         target = first_intraday + timedelta(minutes=offset_minutes)
         slots.append(Slot(target.strftime("%H:%M"), "akd,derinlik,kurum", 14, "intraday"))
 
+    slots.append(Slot("17:55", "akd,derinlik,kurum", 14, "preclose"))
     slots.append(Slot("18:15", "akd,derinlik,kurum", 9, "closing"))
 
     slots.append(Slot("19:30", "takas", 60, "eod"))
