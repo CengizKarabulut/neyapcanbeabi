@@ -25,7 +25,7 @@ gönderilir. Açılış öncesi tekrar koruma penceresi 2 dakikadır; böylece 0
 
 ## Gün içi komutlar
 
-Pazartesi-Cuma, Türkiye saatiyle **10:05'ten başlayarak 15 dakikada bir** 17:50'ye kadar ve ayrıca **18:05 ile 18:15'te**:
+Pazartesi-Cuma, Türkiye saatiyle **90 dakikada bir**, **10:05, 11:35, 13:05, 14:35, 16:05 ve 17:35** saatlerinde; ayrıca kapanış sonrası kontrol için **18:15'te bir kez**:
 
 ```text
 /akd ASELS

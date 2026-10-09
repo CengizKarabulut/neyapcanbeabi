@@ -34,12 +34,13 @@ def daily_slots() -> list[Slot]:
     for hhmm in ("09:40", "09:45", "09:50", "09:55", "09:58"):
         slots.append(Slot(hhmm, "teorik", 2, "preopen"))
 
-    for hour in range(10, 18):
-        for minute in (5, 20, 35, 50):
-            slots.append(Slot(f"{hour:02d}:{minute:02d}", "akd,derinlik,kurum", 14, "intraday"))
+    # Gun ici 90 dakikada bir; kapanis sonrasi 18:15 tek kontrol.
+    first_intraday = datetime(2000, 1, 1, 10, 5)
+    for offset_minutes in range(0, 8 * 60, 90):
+        target = first_intraday + timedelta(minutes=offset_minutes)
+        slots.append(Slot(target.strftime("%H:%M"), "akd,derinlik,kurum", 14, "intraday"))
 
-    for hhmm in ("18:05", "18:15"):
-        slots.append(Slot(hhmm, "akd,derinlik,kurum", 9, "intraday"))
+    slots.append(Slot("18:15", "akd,derinlik,kurum", 9, "closing"))
 
     slots.append(Slot("19:30", "takas", 60, "eod"))
     return slots
